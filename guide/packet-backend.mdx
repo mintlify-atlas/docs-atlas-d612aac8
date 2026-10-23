@@ -1,7 +1,7 @@
 ---
 title: "Access low-level QQ packets with the packet backend"
 sidebarTitle: "Packet Backend"
-description: "Configure and use NapCat's native packet backend to unlock poke, rkey, group to-do, and raw OIDB/Trpc packet actions."
+description: "Configure and use NapCat's native packet backend to unlock send_poke, get_rkey, group to-do management, and raw OIDB/Trpc packet sending actions."
 ---
 
 NapCat can hook directly into NTQQ's native packet layer to expose QQ protocol features that the standard NTQQ JavaScript API does not surface. This native integration — called the **packet backend** — is what powers actions such as `send_poke`, `get_rkey`, group to-do management, and raw packet sending. This page explains how the packet backend works, how to configure it, how to verify it is active, and what you can do with it.
@@ -29,11 +29,10 @@ The `packetBackend` key in `napcat.json` controls how NapCat initialises the pac
 | Value | Behaviour |
 |---|---|
 | `"auto"` | (Default) NapCat tries to load the native packet backend. If the current QQ version is not in the offset table, or if the native client fails to connect, NapCat starts normally without packet features. |
-| `"native"` | Force-enables the native packet backend. Start-up will log an error if initialisation fails but NapCat will still launch. |
 | `"disable"` | Completely skips the packet backend. All packet-dependent actions return an error immediately. |
 
 <Tip>
-Leave `packetBackend` at `"auto"` unless you have a specific reason to force one mode. Auto mode gives you packet features when available and falls back gracefully when they are not.
+Leave `packetBackend` at `"auto"` unless you need to explicitly disable packet features. Auto mode gives you packet features when available and falls back gracefully when they are not.
 </Tip>
 
 ### Disabling via environment variable
@@ -261,13 +260,13 @@ Check the NapCat startup log for a line containing `[Core] [Packet]`. Common mes
 
 - **`PacketBackend 不支持当前QQ版本架构`** — Your QQ version + CPU architecture combination is not in the offset table. Upgrade or downgrade NTQQ to a supported version (check the [releases page](https://github.com/NapNeko/NapCatQQ/releases)).
 - **`NativePacketClient 初始化失败`** — The native client loaded but failed to hook the process. Try restarting NapCat; if it persists, file a bug report with your NTQQ version and OS details.
-- **`已禁用PacketBackend`** — `packetBackend` is set to `"disable"` in your config. Change it to `"auto"` or `"native"`.
+- **`已禁用PacketBackend`** — `packetBackend` is set to `"disable"` in your config. Change it to `"auto"` to re-enable packet features.
 </Accordion>
 
 <Accordion title="send_poke returns an error even with packet backend active">
 `send_poke` uses `PacketSendAvailableDepends`, which requires not just `packetStatus === true` but also that the native send path (`pkt.available`) is online. Call `nc_get_packet_status` and inspect the error stack in the response message. If `pkt.available` is `false`, the receive path initialised correctly but the send hook failed — usually an offset mismatch for a patch-level QQ update.
 </Accordion>
 
-<Accordion title="get_rkey returns stale or expired tokens">
-`get_rkey_server` caches its result until the minimum TTL of the returned keys expires. If you need fresh keys immediately, call `get_rkey` (`get_rkey_ex`) instead — it fetches directly from the packet layer without a cache layer.
+<Accordion title="get_rkey_server returns stale or expired tokens">
+`get_rkey_server` caches its result until the minimum TTL of the returned keys expires. If you need fresh keys immediately, call `get_rkey` instead — it fetches directly from the packet layer without a cache layer.
 </Accordion>

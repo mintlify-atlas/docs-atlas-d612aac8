@@ -1,7 +1,7 @@
 ---
 title: "NapCat troubleshooting and frequently asked questions"
 sidebarTitle: "FAQ"
-description: "Solutions to common NapCat problems — startup failures, network adapter issues, packet backend errors, login and memory tips."
+description: "Solutions to common NapCat problems — startup failures, port conflicts, network adapter issues, packet backend errors, login flow, and memory tips."
 ---
 
 NapCat is straightforward to run for most users, but certain environment conditions, configuration mistakes, or NTQQ version mismatches can cause unexpected behaviour. This page collects the most frequently reported issues along with their causes and step-by-step remedies. If your question is not answered here, check the [GitHub Issues](https://github.com/NapNeko/NapCatQQ/issues) page or open a new one with your NapCat version, OS, and relevant log output.
@@ -15,7 +15,7 @@ NapCat is straightforward to run for most users, but certain environment conditi
 
 1. Open the [NapCat releases page](https://github.com/NapNeko/NapCatQQ/releases) and check the **Supported QQ Versions** section for your NapCat release.
 2. Install the exact NTQQ version listed. Do not use a newer or older patch release unless it is explicitly listed.
-3. If you are on Linux, make sure NTQQ is installed system-wide or that `NAPCAT_QQ_PATH` points to the correct installation directory.
+3. If you are on Linux, make sure NTQQ is installed system-wide or that `NAPCAT_WORKDIR` is set to a directory where NapCat can find and write its configuration.
 4. Restart NapCat.
 
 <Note>
@@ -178,14 +178,14 @@ With `"warn"`, only warnings and errors are written to disk; routine message eve
 
 **Cause:** Each NapCat instance hosts exactly one QQ account. Running two accounts in the same instance is not supported.
 
-**Fix:** Start a separate NapCat process for each account, using a distinct configuration directory and network ports for each:
+**Fix:** Start a separate NapCat process for each account, using a distinct working directory (and therefore a distinct configuration) and network ports for each:
 
 ```bash
-# Account A — ports 6099 / 3000
-NAPCAT_CONFIG_DIR=/data/bot-a napcat
+# Account A — uses /data/bot-a as the data/config root
+NAPCAT_WORKDIR=/data/bot-a napcat
 
-# Account B — ports 6199 / 3100 (edit napcat.json accordingly)
-NAPCAT_CONFIG_DIR=/data/bot-b napcat
+# Account B — uses /data/bot-b (edit its napcat.json for different ports)
+NAPCAT_WORKDIR=/data/bot-b napcat
 ```
 
 Make sure all HTTP server, WebSocket server, and WebUI ports are different between instances. You can manage multiple instances with `pm2`, `systemd` template units (`napcat@bot-a.service`), or Docker containers.

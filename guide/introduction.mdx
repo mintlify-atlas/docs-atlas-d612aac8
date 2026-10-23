@@ -1,7 +1,7 @@
 ---
-title: "NapCat: Modern OneBot 11 Framework for NTQQ"
+title: "NapCat — Modern QQ Bot Protocol Framework on NTQQ"
 sidebarTitle: "Introduction"
-description: "NapCat is a protocol-side QQ bot framework built on NTQQ, implementing OneBot 11 with extended actions, multiple transports, and a plugin adapter system."
+description: "NapCat runs on top of NTQQ to deliver the full OneBot 11 standard, extended actions, six network transports, and a hot-reloadable plugin adapter system."
 ---
 
 NapCat is a modern, protocol-side QQ bot framework that runs on top of NTQQ (the official NT-architecture QQ client). It implements the [OneBot 11](https://11.onebot.dev/) standard in full and extends it with dozens of additional actions — all without requiring you to manage a separate Node.js installation, because NapCat ships as a pre-compiled bundle alongside the QQ binary.
@@ -26,7 +26,7 @@ NapCat supports two distinct deployment models, catering to different hosting en
 │  NTQQ process (Electron / NT runtime)            │
 │  ┌──────────────┐   wrapper.node (native)        │
 │  │ NapCatCore   │◄──kernel listeners/services    │
-│  │  APIs (12+)  │                                │
+│  │  APIs (12)   │                                │
 │  └──────┬───────┘                                │
 │         │ NapCatAdapterManager                   │
 │  ┌──────▼──────────────────────────────────┐     │
@@ -49,7 +49,7 @@ In Shell mode the diagram above lives inside a child worker process managed by t
 
 ## Supported network transports
 
-NapCat's `OB11NetworkManager` can run any combination of the five built-in network adapters simultaneously. Each adapter is registered independently, which means you can expose an HTTP server for your main bot logic and an SSE feed for a dashboard at the same time.
+NapCat's `OB11NetworkManager` can run any combination of the six built-in network adapters simultaneously. Each adapter is registered independently, which means you can expose an HTTP server for your main bot logic and an SSE feed for a dashboard at the same time.
 
 | Transport | Direction | Typical use |
 |---|---|---|
@@ -58,8 +58,9 @@ NapCat's `OB11NetworkManager` can run any combination of the five built-in netwo
 | **WebSocket server** | Bi-directional | Persistent connection, low latency |
 | **WebSocket client** | Bi-directional | NapCat connects to your WS server |
 | **SSE (HTTP server-sent events)** | Outbound (events) | Server-push event stream |
+| **Plugin** | Bi-directional | Loaded plugins receive events and register HTTP routes via `OB11PluginMangerAdapter` |
 
-All adapters share the same `IOB11NetworkAdapter` interface and can be opened, closed, and reloaded at runtime through the WebUI or the `reload` API — no restart required.
+All adapters share the same `IOB11NetworkAdapter` interface and can be opened, closed, and reloaded at runtime through the WebUI — no restart required.
 
 ## Plugin adapter system
 
@@ -74,7 +75,7 @@ Third-party code can register additional `IProtocolAdapter` implementations. Eac
 
 NapCat implements the complete OneBot 11 action set (`send_private_msg`, `send_group_msg`, `get_login_info`, `set_group_kick`, and all others defined in the spec) as well as a large library of NapCat-specific extended actions, including:
 
-- `nc_get_rkey` / `get_rkey_server` — media resource key helpers
+- `get_rkey` / `nc_get_rkey` / `get_rkey_server` — media resource key helpers
 - `get_ai_record` / `send_group_ai_record` — AI voice message support
 - `send_poke` / `friend_poke` / `group_poke` — poke interactions
 - `create_flash_task` / `send_flash_msg` — NTQQ Flash file transfer

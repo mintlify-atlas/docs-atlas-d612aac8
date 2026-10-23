@@ -1,7 +1,7 @@
 ---
-title: "Load NapCat as a Framework plugin inside NTQQ"
+title: "Run NapCat as a Framework Plugin Inside the NTQQ Process"
 sidebarTitle: "Framework Mode"
-description: "Framework mode loads NapCat directly inside the NTQQ Electron process, sharing its runtime and live session objects for tighter, zero-overhead integration."
+description: "Framework mode loads NapCat inside the NTQQ Electron process, sharing live session objects directly for zero-overhead, low-latency OneBot 11 integration."
 ---
 
 Framework mode is the alternative to Shell mode for users who are already running NTQQ on a desktop machine and want NapCat to live inside the same Electron process. Instead of starting a separate Node.js supervisor and worker, NapCat is loaded as a plugin that receives the live NTQQ session and login service objects directly, with no inter-process communication overhead and no named-pipe layer. This gives Framework mode lower latency and direct access to every internal NTQQ API.
@@ -122,16 +122,12 @@ Choose **Framework mode** when you are deploying on a personal Windows desktop w
 
 ## Environment variables in Framework mode
 
-Framework mode honours the same subset of environment variables as Shell mode:
+Framework mode reads only one environment variable directly in its own source (`packages/napcat-framework/napcat.ts`):
 
 | Variable | Value | Effect |
 |---|---|---|
 | `NAPCAT_DISABLE_BYPASS` | `1` | Disables all native bypass patches loaded by `Napi2NativeLoader`. |
-| `NAPCAT_ENABLE_VERBOSE_LOG` | `1` | Enables verbose logging in the native layer via `nativeExports.setVerbose(true)`. |
-| `NAPCAT_PROXY_PORT` | port number | Routes NTQQ's MSF service connections through a SOCKS5 proxy at the given port. |
-| `NAPCAT_PROXY_ADDRESS` | IP address | The proxy host (default `127.0.0.1`) used together with `NAPCAT_PROXY_PORT`. |
-| `NAPCAT_PROXY_CLOSE` | any | Clears any existing network proxy configuration on the session. |
 
 <Warning>
-Framework mode does **not** support `NAPCAT_DISABLE_MULTI_PROCESS` or `NAPCAT_WORKER_PROCESS`, because it never spawns subprocesses. Those variables are meaningful only in Shell mode.
+Framework mode does **not** support `NAPCAT_DISABLE_MULTI_PROCESS`, `NAPCAT_WORKER_PROCESS`, `NAPCAT_ENABLE_VERBOSE_LOG`, `NAPCAT_PROXY_PORT`, `NAPCAT_PROXY_ADDRESS`, or `NAPCAT_PROXY_CLOSE`. Those variables are read only by the Shell mode entry point (`packages/napcat-shell/base.ts`) and have no effect when NapCat is loaded as a Framework plugin.
 </Warning>

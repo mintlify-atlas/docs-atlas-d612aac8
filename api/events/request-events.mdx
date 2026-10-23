@@ -153,7 +153,7 @@ Emitted when a user wants to join a group (`sub_type: 'add'`) or when the bot it
 
 ### Approving or rejecting a group request
 
-Use `set_group_add_request` with the `flag` and the `sub_type` from the event. Set `approve` to `true` to accept or `false` to decline. For rejections, you can optionally provide a `reason` string.
+Use `set_group_add_request` with the `flag` from the event. Set `approve` to `true` to accept or `false` to decline. For rejections, you can optionally provide a `reason` string.
 
 <CodeGroup>
 ```json Approve join request
@@ -161,7 +161,6 @@ Use `set_group_add_request` with the `flag` and the `sub_type` from the event. S
   "action": "set_group_add_request",
   "params": {
     "flag": "xyz789",
-    "sub_type": "add",
     "approve": true
   }
 }
@@ -172,7 +171,6 @@ Use `set_group_add_request` with the `flag` and the `sub_type` from the event. S
   "action": "set_group_add_request",
   "params": {
     "flag": "xyz789",
-    "sub_type": "add",
     "approve": false,
     "reason": "Membership is currently closed."
   }
@@ -184,7 +182,6 @@ Use `set_group_add_request` with the `flag` and the `sub_type` from the event. S
   "action": "set_group_add_request",
   "params": {
     "flag": "inv456abc",
-    "sub_type": "invite",
     "approve": true
   }
 }

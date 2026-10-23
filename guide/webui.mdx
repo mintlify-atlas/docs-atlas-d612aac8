@@ -1,7 +1,7 @@
 ---
 title: "Manage NapCat with the built-in WebUI"
 sidebarTitle: "WebUI"
-description: "Access the NapCat WebUI at http://127.0.0.1:6099/webui to log in, configure network adapters, manage plugins, and monitor logs."
+description: "Access the NapCat WebUI at http://127.0.0.1:6099/webui to log in, configure network adapters, manage plugins, view logs, and adjust settings."
 ---
 
 NapCat ships with a built-in web-based management interface called the WebUI. It gives you a browser-accessible dashboard for logging in to QQ, configuring all network adapters, managing plugins, viewing live logs, and checking system status — all without touching a config file. The WebUI is powered by an Express server that starts automatically alongside NapCat on port **6099** by default.
@@ -132,8 +132,16 @@ The WebUI's own settings are stored in `webui.json` inside the configuration dir
   When `true`, NapCat reads the client's real IP from the `X-Forwarded-For` header instead of the TCP remote address. Enable this only when NapCat runs behind a trusted reverse proxy (e.g. nginx).
 </ParamField>
 
+<ParamField body="autoLoginAccount" type="string" default="">
+  QQ number to log in automatically when NapCat starts. When set, NapCat attempts a quick login for this account immediately at startup. Leave empty to disable automatic login.
+</ParamField>
+
 <ParamField body="enable2FA" type="boolean" default="false">
   Enable Time-based One-Time Password (TOTP) two-factor authentication for the WebUI. When enabled, users must provide a valid TOTP code from an authenticator app (Google Authenticator, Authy, etc.) in addition to the token.
+</ParamField>
+
+<ParamField body="totpSecret" type="string" default="">
+  The TOTP secret key used to generate and validate 2FA codes. This field is populated automatically when you enable 2FA through the WebUI Settings page. Do not edit it manually unless you are importing an existing TOTP credential.
 </ParamField>
 
 ### Example webui.json

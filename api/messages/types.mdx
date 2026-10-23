@@ -43,6 +43,8 @@ Each segment looks like this:
 | `contact` | Contact card share | ❌ | ✅ |
 | `location` | Location share | ❌ | ✅ |
 | `miniapp` | Mini program card (JSON-based) | ✅ | ✅ |
+| `onlinefile` | Online file or folder reference | ❌ | ✅ |
+| `flashtransfer` | QQ flash-transfer file | ❌ | ✅ |
 
 ---
 
@@ -280,18 +282,19 @@ A single entry in a forwarded message card. Used **only** when building a card t
 }
 ```
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | Short ID of an existing message to forward. When present, all other fields are ignored |
-| `user_id` | number \| string | Displayed sender QQ number for a custom node |
-| `uin` | number \| string | Alias for `user_id` (go-cqhttp compatibility) |
-| `nickname` | string | Displayed sender nickname |
-| `name` | string | Alias for `nickname` |
-| `content` | array | Message segments for the custom node body |
-| `time` | string | Timestamp override (Unix seconds string) |
-| `source` | string | Custom source label for the card header |
-| `summary` | string | Card preview summary text |
-| `prompt` | string | Notification pop-up text |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | | Short ID of an existing message to forward. When present, all other fields are ignored |
+| `user_id` | number \| string | | Displayed sender QQ number for a custom node |
+| `uin` | number \| string | | Alias for `user_id` (go-cqhttp compatibility) |
+| `nickname` | string | ✅ | Displayed sender nickname. Required for custom nodes |
+| `name` | string | | Alias for `nickname` (go-cqhttp compatibility) |
+| `content` | array | | Message segments for the custom node body |
+| `time` | string | | Timestamp override (Unix seconds string) |
+| `source` | string | | Custom source label for the card header |
+| `news` | array | | Array of `{ text: string }` preview lines shown in the card |
+| `summary` | string | | Card preview summary text |
+| `prompt` | string | | Notification pop-up text |
 
 ---
 
@@ -502,6 +505,52 @@ A mini program (小程序) card, internally represented as a JSON string.
 | Field | Type | Required | Description |
 |---|---|---|---|
 | `data` | string | ✅ | Serialised mini program JSON |
+
+---
+
+## onlinefile
+
+An online file or folder reference received from NTQQ. This segment is only ever **received** — bots cannot construct and send `onlinefile` segments directly.
+
+```json
+{
+  "type": "onlinefile",
+  "data": {
+    "msgId": "70000001",
+    "elementId": "abc123",
+    "fileName": "report.pdf",
+    "fileSize": "204800",
+    "isDir": false
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `msgId` | string | Raw NTQQ message ID that contains this file |
+| `elementId` | string | Element ID within the message |
+| `fileName` | string | File or folder name |
+| `fileSize` | string | File size in bytes (as a string) |
+| `isDir` | boolean | `true` if this entry is a folder rather than a file |
+
+---
+
+## flashtransfer
+
+A QQ flash-transfer (闪传) file segment. Flash transfer is a peer-to-peer direct-send mechanism in QQ. This segment is only ever **received** — bots cannot initiate flash-transfer sends.
+
+```json
+{
+  "type": "flashtransfer",
+  "data": {
+    "fileSetId": "abc123def456"
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `fileSetId` | string | Identifier of the flash-transfer file set |
 
 ---
 

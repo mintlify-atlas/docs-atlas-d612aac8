@@ -11,14 +11,14 @@ Every NapCat action — whether called over HTTP POST or WebSocket — returns a
 The full `OB11Return<T>` shape returned by every action is:
 
 ```typescript
-interface OB11Return<T> {
-  status:  string;           // 'ok' | 'failed'
-  retcode: number;           // 0 on success; non-zero on error
-  data:    T | null;         // result payload, or null on error
-  message: string;           // human-readable error description
-  wording: string;           // same as message (compatibility alias)
-  echo:    unknown;          // echoed back from the request unchanged
-  stream:  string;           // 'normal-action' | 'stream-action'
+interface OB11Return<DataType> {
+  status:   string;                              // 'ok' | 'failed'
+  retcode:  number;                             // 0 on success; non-zero on error
+  data:     DataType;                           // result payload; null or StreamPacketBasic on error
+  message:  string;                             // human-readable error description
+  echo?:    unknown;                            // echoed back from the request (WebSocket only)
+  wording?: string;                             // same as message (go-cqhttp compatibility alias)
+  stream?:  'normal-action' | 'stream-action'; // streaming transport marker
 }
 ```
 
@@ -28,11 +28,11 @@ interface OB11Return<T> {
 |-------|------|-------------|
 | `status` | `string` | `'ok'` when the action succeeded; `'failed'` when it did not. |
 | `retcode` | `number` | `0` on success. A non-zero code indicates the error category (see table below). |
-| `data` | `T \| null` | The action's result payload on success; `null` on error. For streaming actions in an error state, this is a `StreamPacketBasic` with `type: 'error'` instead of `null`. |
+| `data` | `DataType` | The action's result payload on success. On error this is `null` for normal actions, or a `StreamPacketBasic` with `type: 'error'` for streaming actions. |
 | `message` | `string` | A human-readable description of the error. Empty string on success. |
-| `wording` | `string` | Identical to `message`. Provided for compatibility with clients that read `wording` instead of `message`. |
-| `echo` | `unknown` | The value you passed in the `echo` field of your request, returned unchanged. Use this to correlate WebSocket responses with outstanding requests. `null` if no echo was provided. |
-| `stream` | `string` | `'normal-action'` for standard request/response actions; `'stream-action'` for actions that use the streaming transport. |
+| `wording` | `string \| undefined` | Identical to `message`. Optional; provided for compatibility with go-cqhttp clients that read `wording` instead of `message`. |
+| `echo` | `unknown \| undefined` | The value you passed in the `echo` field of your request, returned unchanged. Present only on WebSocket responses. Use this to correlate responses with outstanding requests. |
+| `stream` | `'normal-action' \| 'stream-action' \| undefined` | `'normal-action'` for standard request/response actions; `'stream-action'` for actions that use the streaming transport. Omitted if not applicable. |
 
 ## Success and error examples
 
@@ -72,6 +72,7 @@ NapCat uses distinct retcodes depending on both the error kind and the transport
 | `1200` | Execution error (WebSocket) | The action ran but encountered a business-logic error. |
 | `1400` | Validation error (WebSocket) | One or more request parameters failed schema validation. |
 | `1401` | Permission error (any transport) | The bot does not have sufficient permissions to perform the action. |
+| `1403` | Authentication error (WebSocket) | The token provided during WebSocket connection did not match the configured token. |
 | `1404` | Not found (any transport) | The requested resource (message, file, user, etc.) does not exist. |
 
 <Note>
@@ -122,14 +123,14 @@ Below are minimal examples of reading a NapCat response in TypeScript and Python
 
 <CodeGroup>
 ```typescript TypeScript
-interface OB11Return<T> {
-  status: string;
-  retcode: number;
-  data: T | null;
-  message: string;
-  wording: string;
-  echo: unknown;
-  stream: string;
+interface OB11Return<DataType> {
+  status:   string;
+  retcode:  number;
+  data:     DataType;
+  message:  string;
+  echo?:    unknown;
+  wording?: string;
+  stream?:  'normal-action' | 'stream-action';
 }
 
 async function callAction<T>(

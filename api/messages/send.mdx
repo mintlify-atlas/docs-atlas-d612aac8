@@ -16,11 +16,11 @@ NapCat exposes a family of OneBot 11 actions for outbound messaging. The general
   Destination type: `'private'` for a direct message or `'group'` for a group chat. When omitted, NapCat infers the destination from whichever ID is supplied.
 </ParamField>
 
-<ParamField body="user_id" type="number" required>
+<ParamField body="user_id" type="number | string">
   Target user's QQ number. Required when `message_type` is `'private'` (or when `group_id` is absent).
 </ParamField>
 
-<ParamField body="group_id" type="number" required>
+<ParamField body="group_id" type="number | string">
   Target group number. Required when `message_type` is `'group'` (or when `user_id` is absent).
 </ParamField>
 
@@ -34,6 +34,10 @@ NapCat exposes a family of OneBot 11 actions for outbound messaging. The general
 
 <ParamField body="source" type="string">
   Custom source label shown in the forwarded-message card header. Only applies when `message` contains `node` segments.
+</ParamField>
+
+<ParamField body="news" type="array">
+  Array of `{ text: string }` objects shown as preview lines in the forwarded-message card. Only applies when `message` contains `node` segments.
 </ParamField>
 
 <ParamField body="summary" type="string">
@@ -94,7 +98,7 @@ curl -X POST http://localhost:3000/send_msg \
 
 Dedicated action for sending a direct message to a single user. The `message_type` is fixed to `'private'` internally — you only need `user_id`.
 
-<ParamField body="user_id" type="number" required>
+<ParamField body="user_id" type="number | string" required>
   The QQ number of the user to message.
 </ParamField>
 
@@ -143,7 +147,7 @@ curl -X POST http://localhost:3000/send_private_msg \
 
 Dedicated action for posting a message to a group chat. The `message_type` is fixed to `'group'` — only `group_id` is required.
 
-<ParamField body="group_id" type="number" required>
+<ParamField body="group_id" type="number | string" required>
   The number of the target group.
 </ParamField>
 
@@ -183,7 +187,7 @@ curl -X POST http://localhost:3000/send_group_msg \
 
 Recall (unsend) a previously sent message. The operation is irreversible and subject to the standard QQ recall time window (typically two minutes for regular users).
 
-<ParamField body="message_id" type="number" required>
+<ParamField body="message_id" type="number | string" required>
   The `message_id` returned when the message was originally sent.
 </ParamField>
 
@@ -273,7 +277,7 @@ Send a chain of forwarded message nodes as a collapsed "forwarded messages" card
 
 **For `send_group_forward_msg`:**
 
-<ParamField body="group_id" type="number" required>
+<ParamField body="group_id" type="number | string" required>
   Target group number.
 </ParamField>
 
@@ -283,7 +287,7 @@ Send a chain of forwarded message nodes as a collapsed "forwarded messages" card
 
 **For `send_private_forward_msg`:**
 
-<ParamField body="user_id" type="number" required>
+<ParamField body="user_id" type="number | string" required>
   Target user's QQ number.
 </ParamField>
 

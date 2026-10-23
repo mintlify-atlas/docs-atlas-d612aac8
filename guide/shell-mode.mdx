@@ -1,7 +1,7 @@
 ---
-title: "Run NapCat in Shell mode as a standalone process"
+title: "NapCat Shell Mode: Run as a Standalone Node.js Process"
 sidebarTitle: "Shell Mode"
-description: "Shell mode runs NapCat as its own process alongside NTQQ, using named-pipe IPC and multi-process supervision for robust restarts and lifecycle management."
+description: "Shell mode runs NapCat as a standalone Node.js process beside NTQQ, with named-pipe IPC and multi-process supervision for automatic crash recovery."
 ---
 
 Shell mode is the recommended deployment strategy for most users who want to run NapCat independently of the NTQQ Electron window. In this mode NapCat launches as a **standalone Node.js process** that sits alongside NTQQ, communicates with it through a Windows named pipe for stdout forwarding, and manages an inner **worker subprocess** that hosts the actual NapCat core. This parent–worker split means a restart of the core never requires killing the outer supervisor, and crash-recovery logic can detect and handle rapid crash loops automatically.

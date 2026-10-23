@@ -1,5 +1,5 @@
 ---
-title: "Get started with NapCat in 5 minutes"
+title: "Quickstart: Get NapCat Running and Send Your First API Call"
 sidebarTitle: "Quickstart"
 description: "Download NTQQ and NapCat, launch the bot, log in through the WebUI, configure a network adapter, and send your first API call — all in five minutes."
 ---
@@ -164,14 +164,15 @@ A successful response looks like this:
   },
   "message": "",
   "wording": "",
-  "echo": null
+  "echo": null,
+  "stream": "normal-action"
 }
 ```
 
 The `retcode: 0` field confirms NapCat received and processed the request successfully. `user_id` is the QQ number of the currently logged-in account and `nickname` is its display name.
 
 <Note>
-**Response envelope** — every OneBot 11 response from NapCat follows the `OB11Return` schema: `{ status, retcode, data, message, wording, echo }`. A non-zero `retcode` indicates an error; the `message` and `wording` fields carry human-readable details.
+**Response envelope** — every OneBot 11 response from NapCat follows the `OB11Return` schema: `{ status, retcode, data, message, wording, echo, stream }`. A non-zero `retcode` indicates an error; the `message` and `wording` fields carry human-readable details. The `stream` field is always present and will be `"normal-action"` for standard responses.
 </Note>
 
 </Steps>

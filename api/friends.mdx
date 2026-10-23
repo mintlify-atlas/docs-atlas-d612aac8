@@ -37,6 +37,21 @@ Returns the complete list of friends for the bot's QQ account. NapCat fetches bu
     <ResponseField name="level" type="number">
       QQ level of the friend, computed from their `qqLevel` field.
     </ResponseField>
+    <ResponseField name="age" type="number">
+      Age from the friend's profile. Optional — may be absent.
+    </ResponseField>
+    <ResponseField name="qid" type="string">
+      Custom QQ ID (QID) if the friend has set one. Optional.
+    </ResponseField>
+    <ResponseField name="login_days" type="number">
+      Consecutive login days. Optional.
+    </ResponseField>
+    <ResponseField name="category_id" type="number">
+      Friend group (分组) ID. Optional.
+    </ResponseField>
+    <ResponseField name="categoryName" type="string">
+      Friend group name. Optional.
+    </ResponseField>
   </Expandable>
 </ResponseField>
 
@@ -213,12 +228,12 @@ curl -X POST http://127.0.0.1:3000/get_login_info \
 
 Sends a profile thumbs-up (点赞) to a user. QQ limits the number of likes you can give to the same person per day; exceeding the limit causes the action to throw an error. The `times` parameter controls how many likes are sent in a single call, up to a maximum of `10`.
 
-<ParamField body="user_id" type="number" required>
-  QQ number of the user to like.
+<ParamField body="user_id" type="string" required>
+  QQ number of the user to like. Accepts a numeric string (e.g. `"10001"`).
 </ParamField>
 
-<ParamField body="times" type="number" required>
-  Number of likes to send in this call. Valid range is `1` – `10`. Defaults to `1` if omitted. Accepts a numeric string as well.
+<ParamField body="times" type="number | string" optional>
+  Number of likes to send in this call. Defaults to `1` when omitted. Accepts a numeric string as well.
 </ParamField>
 
 **Response** — `null` on success. Returns an error if the like operation fails (e.g. daily quota exceeded or user does not exist).

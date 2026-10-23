@@ -67,11 +67,11 @@ curl -X POST http://127.0.0.1:3000/get_group_list \
 
 Fetches basic information for a single group. If the group is not in the local cache, NapCat fetches its details directly from the NTQQ network layer.
 
-<ParamField body="group_id" type="number" required>
-  Numeric QQ group ID to look up.
+<ParamField body="group_id" type="string" required>
+  QQ group ID to look up. Accepts a numeric string (e.g. `"123456789"`).
 </ParamField>
 
-**Response** — a single `GroupInfo` object with the same fields as `get_group_list`.
+**Response** — a single `GroupInfo` object with the same fields as `get_group_list`, plus the mute-all status and remark fields.
 
 <ResponseField name="data" type="GroupInfo">
   <Expandable title="GroupInfo fields">
@@ -87,6 +87,12 @@ Fetches basic information for a single group. If the group is not in the local c
     <ResponseField name="max_member_count" type="number">
       Maximum allowed member count.
     </ResponseField>
+    <ResponseField name="group_all_shut" type="number">
+      Whole-group mute status. `-1` when all-member mute is active; `0` when not muted.
+    </ResponseField>
+    <ResponseField name="group_remark" type="string">
+      Local remark the bot has set for this group. Empty string if none.
+    </ResponseField>
   </Expandable>
 </ResponseField>
 
@@ -95,7 +101,7 @@ Fetches basic information for a single group. If the group is not in the local c
 curl -X POST http://127.0.0.1:3000/get_group_info \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your_token_here" \
-  -d '{"group_id": 123456789}'
+  -d '{"group_id": "123456789"}'
 ```
 
 ```json Response
@@ -106,7 +112,9 @@ curl -X POST http://127.0.0.1:3000/get_group_info \
     "group_id": 123456789,
     "group_name": "NapCat Dev",
     "member_count": 42,
-    "max_member_count": 500
+    "max_member_count": 500,
+    "group_all_shut": 0,
+    "group_remark": ""
   }
 }
 ```
@@ -252,16 +260,16 @@ Removes a member from the group. Optionally blocks the kicked user from sending 
   The bot must have admin or owner role in the group. Attempting to kick another admin requires owner-level permissions.
 </Note>
 
-<ParamField body="group_id" type="number" required>
-  QQ group ID to kick the member from.
+<ParamField body="group_id" type="string" required>
+  QQ group ID to kick the member from. Accepts a numeric string (e.g. `"123456789"`).
 </ParamField>
 
-<ParamField body="user_id" type="number" required>
-  QQ number of the member to kick.
+<ParamField body="user_id" type="string" required>
+  QQ number of the member to kick. Accepts a numeric string (e.g. `"987654321"`).
 </ParamField>
 
-<ParamField body="reject_add_request" type="boolean" optional>
-  When `true`, the kicked member's future join requests to this group are automatically rejected. Defaults to `false`.
+<ParamField body="reject_add_request" type="boolean | string" optional>
+  When `true` (or the string `"true"`), the kicked member's future join requests to this group are automatically rejected. Defaults to `false`.
 </ParamField>
 
 **Response** — `null` on success.
@@ -272,8 +280,8 @@ curl -X POST http://127.0.0.1:3000/set_group_kick \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your_token_here" \
   -d '{
-    "group_id": 123456789,
-    "user_id": 987654321,
+    "group_id": "123456789",
+    "user_id": "987654321",
     "reject_add_request": false
   }'
 ```
@@ -297,16 +305,16 @@ Mutes a single member in a group for a specified number of seconds. Set `duratio
   You cannot mute the group owner, and you can only mute admins if the bot itself is the owner. NapCat checks the caller's role before sending the request and throws a descriptive error if the operation is not permitted.
 </Note>
 
-<ParamField body="group_id" type="number" required>
-  QQ group ID where the ban should be applied.
+<ParamField body="group_id" type="string" required>
+  QQ group ID where the ban should be applied. Accepts a numeric string (e.g. `"123456789"`).
 </ParamField>
 
-<ParamField body="user_id" type="number" required>
-  QQ number of the member to mute.
+<ParamField body="user_id" type="string" required>
+  QQ number of the member to mute. Accepts a numeric string (e.g. `"987654321"`).
 </ParamField>
 
-<ParamField body="duration" type="number" required>
-  Mute duration in seconds. Pass `0` to lift an existing mute. Minimum effective value is `60` (1 minute).
+<ParamField body="duration" type="number | string" optional>
+  Mute duration in seconds. Pass `0` to lift an existing mute. Minimum effective value is `60` (1 minute). Defaults to `0`. Accepts a numeric string as well.
 </ParamField>
 
 **Response** — `null` on success.
@@ -317,8 +325,8 @@ curl -X POST http://127.0.0.1:3000/set_group_ban \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer your_token_here" \
   -d '{
-    "group_id": 123456789,
-    "user_id": 987654321,
+    "group_id": "123456789",
+    "user_id": "987654321",
     "duration": 600
   }'
 ```
@@ -563,15 +571,11 @@ Approves or rejects a pending join request or group invitation. The `flag` must 
   The request flag string received in the group join/invite event. This value identifies which pending request to act on.
 </ParamField>
 
-<ParamField body="sub_type" type="string" optional>
-  Event sub-type: `"add"` for a user requesting to join, or `"invite"` for a bot-invite. NapCat resolves the correct request from its notification cache regardless of this field, but it is recommended for clarity.
+<ParamField body="approve" type="boolean | string" optional>
+  `true` (or `"true"`) to approve the request, `false` (or `"false"`) to reject it. Defaults to `true`.
 </ParamField>
 
-<ParamField body="approve" type="boolean" optional>
-  `true` to approve the request, `false` to reject it. Defaults to `true`.
-</ParamField>
-
-<ParamField body="reason" type="string" optional>
+<ParamField body="reason" type="string | null" optional>
   Rejection reason shown to the requester when `approve` is `false`. Defaults to a single space when omitted.
 </ParamField>
 
@@ -588,7 +592,6 @@ curl -X POST http://127.0.0.1:3000/set_group_add_request \
   -H "Authorization: Bearer your_token_here" \
   -d '{
     "flag": "1700000000",
-    "sub_type": "add",
     "approve": true
   }'
 ```
@@ -599,7 +602,6 @@ curl -X POST http://127.0.0.1:3000/set_group_add_request \
   -H "Authorization: Bearer your_token_here" \
   -d '{
     "flag": "1700000000",
-    "sub_type": "add",
     "approve": false,
     "reason": "Invitation only group."
   }'

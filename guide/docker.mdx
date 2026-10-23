@@ -1,7 +1,7 @@
 ---
-title: "Deploy NapCat with Docker for headless servers"
+title: "Deploy NapCat with Docker on Headless Linux Servers"
 sidebarTitle: "Docker"
-description: "Deploy NapCat on headless servers via the official Docker image — covers docker run, Compose, volume mounts, port mapping, and QR code login."
+description: "Deploy NapCat on headless Linux servers using the official Docker image — covers docker run, Compose, volume mounts, port mapping, and QR code login."
 ---
 
 Docker is the easiest way to run NapCat on a Linux server that has no graphical environment. The official image bundles a compatible NTQQ AppImage, Node.js, and the NapCat Shell bundle into a single container. Because the container manages the full process stack, you only need to provide a volume for persistent configuration, expose the WebUI and adapter ports, and then scan the QR code from your browser on first login.

@@ -54,10 +54,13 @@ Restart the server after installation. Without this component, `wrapper.node` wi
     C:\NapCat\
     ├── NapCatWinBootMain.exe       ← Native launcher (injects the hook DLL)
     ├── NapCatWinBootHook.dll       ← DLL that loads NapCat into NTQQ
-    ├── launcher.bat                ← Recommended start script (auto-detects QQ path)
-    ├── launcher-user.bat           ← Non-admin variant (limited functionality)
-    ├── launcher-win10.bat          ← Windows 10 variant
+    ├── launcher.bat                ← Recommended start script (auto-detects QQ path, requires admin)
+    ├── launcher-user.bat           ← Non-admin variant
+    ├── launcher-win10.bat          ← Windows 10 variant (requires admin)
+    ├── launcher-win10-user.bat     ← Windows 10 non-admin variant
     ├── launcher-elevate.ps1        ← PowerShell elevation helper
+    ├── KillQQ.bat                  ← Helper script to terminate a running QQ process
+    ├── quickLoginExample.bat       ← Example script for QQ number quick-login
     ├── loadNapCat.js               ← JS bootstrap loaded by the hook
     ├── napcat.mjs                  ← Compiled NapCat shell entry point
     ├── qqnt.json                   ← NTQQ version/patch manifest
@@ -239,6 +242,7 @@ NapCat reads the following environment variables at startup. You can set them in
 | `NAPCAT_DISABLE_MULTI_PROCESS` | `"1"` or unset | unset | Set to `"1"` to run NapCat in single-process mode (no master/worker split). Useful for debugging or for environments where fork is unavailable. Also accepted as `NAPCAT_DISABLE_MULTIPROCESSING`. |
 | `NAPCAT_DISABLE_PIPE` | `"1"` or unset | unset | Set to `"1"` to disable the named-pipe IPC channel between the launcher and the master process. Disable this if your environment does not support named pipes. |
 | `NAPCAT_DISABLE_BYPASS` | `"1"` or unset | unset | Set to `"1"` to disable all NTQQ native bypasses (napi2native hooks). Bypasses are enabled by default in Framework mode; disabling them may reduce functionality but increases compatibility with hardened environments. |
+| `NAPCAT_WORKDIR` | Path string | binary directory (macOS: `~/Library/Application Support/QQ/NapCat`) | Override the NapCat working directory. When set, logs, config, and cache are stored under this path instead of the defaults. |
 | `NAPCAT_WRAPPER_PATH` | Path string | auto-detected | Absolute path to `wrapper.node`. Override the auto-detection logic if NTQQ is installed to a non-standard location. |
 | `NAPCAT_WEBUI_JWT_SECRET_KEY` | String | random on start | JWT secret used to sign WebUI authentication tokens. Set this to a stable value if you want tokens to survive process restarts. |
 | `NAPCAT_WEBUI_PREFERRED_PORT` | Port number | `6099` | Preferred port for the WebUI HTTP server. NapCat will try this port first and fall back to a random available port if it is already in use. |

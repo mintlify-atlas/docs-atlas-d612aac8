@@ -214,12 +214,14 @@ NapCat forwards raw group system (gray-bar) messages so downstream bots can dete
 
 ### `notify` / `sub_type: 'poke'` — poke (friend or group)
 
-NapCat emits poke events through the `notify` notice type. Both friend pokes and group pokes share the same `sub_type: 'poke'` discriminator; group pokes additionally carry `group_id`.
+NapCat emits poke events through the `notify` notice type. Both friend pokes and group pokes share the same `sub_type: 'poke'` discriminator; group pokes additionally carry `group_id`. The `sender_id` field is only present on friend pokes (`OB11FriendPokeEvent`), not on group pokes.
 
 <ResponseField name="notice_type" type="'notify'" required />
 <ResponseField name="sub_type" type="'poke'" required />
 <ResponseField name="user_id" type="number" required>The user who sent the poke.</ResponseField>
-<ResponseField name="sender_id" type="number" required>Same as `user_id` (the initiator).</ResponseField>
+<ResponseField name="sender_id" type="number">
+  The initiator of the poke. Present on **friend pokes only**; not included in group poke events.
+</ResponseField>
 <ResponseField name="target_id" type="number" required>The user who was poked.</ResponseField>
 <ResponseField name="group_id" type="number">Present on group pokes only.</ResponseField>
 <ResponseField name="raw_info" type="unknown">
@@ -367,7 +369,6 @@ NapCat emits this event immediately before the bot account disconnects so that d
   "sub_type": "poke",
   "group_id": 123456,
   "user_id": 10001,
-  "sender_id": 10001,
   "target_id": 99999,
   "time": 1700000400,
   "self_id": 99999

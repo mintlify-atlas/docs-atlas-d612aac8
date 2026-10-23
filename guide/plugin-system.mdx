@@ -1,7 +1,7 @@
 ---
 title: "Extend NapCat with custom actions via the plugin system"
 sidebarTitle: "Plugins"
-description: "Learn how to write NapCat plugins that inject custom OneBot actions and HTTP routes into a running NapCat instance."
+description: "Learn how to write NapCat plugins that inject custom OneBot actions and HTTP routes into a running NapCat instance using the plugin system."
 ---
 
 NapCat's plugin system lets you extend the bot framework without forking the core codebase. Plugins are Node.js modules placed inside the NapCat plugin directory; NapCat's `OB11PluginMangerAdapter` discovers them automatically on startup, calls their lifecycle hooks, and merges any custom OneBot actions they export into the live action router. This page explains every step — from enabling the plugin transport to shipping a fully-typed custom action.
@@ -79,6 +79,9 @@ The `NapCatPluginContext` object passed to every hook exposes:
 | `core` | `NapCatCore` | Raw NTQQ core APIs |
 | `oneBot` | `NapCatOneBot11Adapter` | The OneBot adapter instance |
 | `actions` | `ActionMap` | The live action router map |
+| `pluginName` | `string` | This plugin's ID (from `package.json` `name`) |
+| `pluginPath` | `string` | Absolute path to the plugin directory |
+| `adapterName` | `string` | The network adapter instance name |
 | `logger` | `PluginLogger` | Prefixed logger (`[Plugin: id]`) |
 | `router` | `PluginRouterRegistry` | HTTP route registration |
 | `pluginManager` | `IPluginManager` | Plugin lifecycle management |
@@ -204,6 +207,7 @@ curl -X POST http://localhost:6099/echo \
 | `payloadExample` | Optional | Example payload object for OpenAPI docs |
 | `returnExample` | Optional | Example return value for OpenAPI docs |
 | `useStream` | Optional | Set `true` to enable streaming response mode |
+| `errorExamples` | Optional | Array of `{ code, description }` error examples shown in OpenAPI docs; defaults to the common 1400/1401/1404 set |
 
 ## The `OB11Response` helper
 

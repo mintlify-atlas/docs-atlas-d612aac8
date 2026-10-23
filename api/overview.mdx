@@ -51,9 +51,8 @@ All adapter types support a shared `token` field in the adapter config. When a t
 
 | Transport | Method |
 |-----------|--------|
-| HTTP | `Authorization: Bearer <token>` request header |
-| WebSocket (connection) | `?access_token=<token>` query parameter on the WebSocket URL |
-| WebSocket (per-message) | `"token": "<token>"` field inside the JSON frame |
+| HTTP | `Authorization: Bearer <token>` request header, **or** `?access_token=<token>` query parameter |
+| WebSocket (connection) | `?access_token=<token>` query parameter on the WebSocket URL, **or** `Authorization: Bearer <token>` header on the upgrade request |
 
 <Warning>
   Leaving the token empty disables authentication entirely. Always set a strong token on any adapter that is accessible from outside `localhost`.
