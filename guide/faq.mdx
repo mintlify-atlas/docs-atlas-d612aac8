@@ -1,0 +1,215 @@
+---
+title: "NapCat troubleshooting and frequently asked questions"
+sidebarTitle: "FAQ"
+description: "Solutions to common NapCat problems — startup failures, network adapter issues, packet backend errors, login and memory tips."
+---
+
+NapCat is straightforward to run for most users, but certain environment conditions, configuration mistakes, or NTQQ version mismatches can cause unexpected behaviour. This page collects the most frequently reported issues along with their causes and step-by-step remedies. If your question is not answered here, check the [GitHub Issues](https://github.com/NapNeko/NapCatQQ/issues) page or open a new one with your NapCat version, OS, and relevant log output.
+
+<Accordion title="NapCat fails to start — NTQQ version not found">
+**Symptom:** NapCat exits immediately on startup with a log message such as `QQ version not found` or `unsupported NTQQ version`.
+
+**Cause:** NapCat reads the installed NTQQ version using `QQBasicInfoWrapper.getFullQQVersion()` and compares it against the versions it was built to support. If the detected version string is not in NapCat's compatibility list, it refuses to start to avoid undefined behaviour.
+
+**Fix:**
+
+1. Open the [NapCat releases page](https://github.com/NapNeko/NapCatQQ/releases) and check the **Supported QQ Versions** section for your NapCat release.
+2. Install the exact NTQQ version listed. Do not use a newer or older patch release unless it is explicitly listed.
+3. If you are on Linux, make sure NTQQ is installed system-wide or that `NAPCAT_QQ_PATH` points to the correct installation directory.
+4. Restart NapCat.
+
+<Note>
+NapCat's packet backend also depends on per-version native offsets. Even if NapCat starts successfully, the packet backend may be unavailable on an unsupported patch release.
+</Note>
+</Accordion>
+
+<Accordion title="WebUI is not accessible at port 6099">
+**Symptom:** Opening `http://localhost:6099` in a browser returns a connection refused error or a timeout.
+
+**Cause 1 — Port already in use:** NapCat's built-in HTTP server tries port 6099 first. If that port is occupied by another process, NapCat increments the port number by 1 and tries again, up to 100 times (i.e. it will try up to port 6199). The actual bound port is printed in the startup log.
+
+**Fix:**
+- Check the startup log for a line such as `WebUI available at http://0.0.0.0:6101` and use that port.
+- Alternatively, free port 6099 by stopping the conflicting process.
+
+**Cause 2 — Firewall blocking the port:** If NapCat is running on a remote server, your firewall may block inbound connections to port 6099.
+
+**Fix:**
+- Open the port in your firewall (`ufw allow 6099/tcp` on Ubuntu, equivalent on other systems).
+- Alternatively, use an SSH tunnel: `ssh -L 6099:localhost:6099 user@yourserver` and then open `http://localhost:6099` locally.
+
+**Cause 3 — Binding to localhost only:** The default host is `127.0.0.1`, which is not reachable from other machines.
+
+**Fix:** Set `httpServerHost` to `0.0.0.0` in your `napcat.json` if you need remote access (combine with authentication tokens and firewall rules for security).
+</Accordion>
+
+<Accordion title="Network adapter not receiving events">
+**Symptom:** Your HTTP webhook or WebSocket client is connected but never receives any events (messages, notices, etc.).
+
+**Cause 1 — Adapter disabled:** Each network adapter has its own `enable` flag. If it is `false`, the adapter is registered but not started.
+
+**Fix:** Open `napcat.json` (or the WebUI Network page) and ensure `"enable": true` is set for the adapter you want to use.
+
+**Cause 2 — Wrong token format:** When a token is configured, the adapter validates every incoming request. The expected header format is:
+
+```
+Authorization: Bearer <your-token>
+```
+
+A common mistake is sending `Authorization: <token>` without the `Bearer ` prefix.
+
+**Fix:** Update your client to send the correct `Authorization: Bearer <token>` header. Check the token value carefully for leading or trailing whitespace.
+
+**Cause 3 — `messagePostFormat` mismatch:** If your downstream consumer expects `string` format but the adapter is configured to `array`, message segment structures will differ.
+
+**Fix:** Set `"messagePostFormat": "string"` or `"array"` to match what your application expects.
+</Accordion>
+
+<Accordion title="QR code expired during login">
+**Symptom:** The QR code on the NapCat WebUI login screen shows as expired and scanning it fails.
+
+**Cause:** QQ QR codes have a short validity window (typically 3 minutes). If the code is not scanned within that time it expires.
+
+**Fix:** Click the **Refresh QR Code** button directly beneath the QR code image on the WebUI login page. A new QR code will be generated immediately. Scan it promptly with the QQ mobile app — use **Add Friends → Scan** or the QR code scanner in the QQ app home screen.
+
+<Tip>
+If you are running NapCat on a remote server, use SSH port forwarding to access the WebUI locally so you can scan more conveniently: `ssh -L 6099:localhost:6099 user@yourserver`.
+</Tip>
+</Accordion>
+
+<Accordion title="`send_poke` returns an error">
+**Symptom:** Calling `send_poke` (or `friend_poke` / `group_poke`) returns a `failed` status with a message about `packetBackend不可用`.
+
+**Cause:** `send_poke` requires NapCat's native packet backend to be active and its send path (`pkt.available`) to be online. The packet backend may be disabled in config, your NTQQ version may not be in the offset table, or the native hook failed to initialise.
+
+**Fix:**
+
+1. Call `nc_get_packet_status` to check whether the backend is running:
+   ```bash
+   curl -X POST http://localhost:6099/nc_get_packet_status \
+     -H "Authorization: Bearer <token>" \
+     -d '{}'
+   ```
+2. If the response is `"status": "failed"`, review the `message` field — it includes a stack trace from the native initialisation.
+3. Ensure `packetBackend` is not set to `"disable"` in `napcat.json`.
+4. Verify that your installed NTQQ version is listed as supported for your NapCat release.
+5. Restart NapCat and check startup logs for `[Core] [Packet]` lines.
+
+See the [Packet Backend](/guide/packet-backend) page for a full explanation.
+</Accordion>
+
+<Accordion title="Messages not being received in webhook (HTTP client) mode">
+**Symptom:** Your HTTP webhook endpoint never receives POST requests from NapCat, even though the bot is connected to QQ.
+
+**Cause 1 — URL not reachable from NapCat's host:** NapCat initiates outbound HTTP POST requests to your webhook URL. If that URL resolves to a private IP that is not routable from the machine running NapCat (e.g. `localhost` on a remote server, or a LAN IP behind NAT), the requests will silently fail or time out.
+
+**Fix:** Use a publicly reachable URL, or if testing locally ensure both NapCat and your server run on the same machine and the URL uses `127.0.0.1` correctly.
+
+**Cause 2 — Self-sent messages not forwarded:** By default, messages sent by the bot account itself are not forwarded to webhooks.
+
+**Fix:** Set `"reportSelfMessage": true` in the HTTP client adapter config:
+```json
+{
+  "name": "my-webhook",
+  "enable": true,
+  "url": "http://your-server:8080/webhook",
+  "reportSelfMessage": true
+}
+```
+
+**Cause 3 — Token mismatch on the receiving end:** If your webhook server validates the `Authorization` header and the token does not match, it will drop the request.
+
+**Fix:** Ensure the token in your NapCat HTTP client config matches what your webhook server expects, or remove token validation during debugging.
+</Accordion>
+
+<Accordion title="High memory usage on low-resource machines">
+**Symptom:** NapCat consumes several hundred megabytes of RAM, which is too much for a small VPS or embedded device.
+
+**Cause:** NapCat itself is designed with low-memory operation in mind, but it runs **on top of NTQQ** — the full desktop QQ application. NTQQ uses Electron and Chromium, which are inherently memory-heavy regardless of what NapCat does.
+
+**Recommendations:**
+
+- Use **Shell (headless) mode** rather than launching a full NTQQ GUI window. In headless mode, the Electron renderer process is not started and memory use is significantly lower.
+- Disable features you do not need (e.g. set `"enableLocalFile2Url": false` if you are not serving local files).
+- On Linux, `zram` or swap can help absorb memory spikes during QQ reconnection.
+- If you need an even lighter footprint, consider [LiteLoaderQQNT](https://github.com/LiteLoaderQQNT/LiteLoaderQQNT)-compatible setups on ARM devices.
+
+<Note>
+There is no way to reduce NTQQ's baseline memory footprint from within NapCat. The minimum realistic working set is around 300–500 MB depending on OS and QQ version.
+</Note>
+</Accordion>
+
+<Accordion title="Log files growing too large">
+**Symptom:** NapCat's log files fill up disk space over time, especially on busy bots receiving thousands of messages per day.
+
+**Cause:** By default, NapCat writes structured logs to disk. High-traffic bots generate large volumes of debug-level log entries.
+
+**Fix — disable file logging entirely:**
+```json
+{
+  "fileLog": false
+}
+```
+
+**Fix — raise the minimum log level for file output:**
+```json
+{
+  "fileLogLevel": "warn"
+}
+```
+
+With `"warn"`, only warnings and errors are written to disk; routine message events and debug traces are suppressed.
+
+**Fix — log rotation:** NapCat does not rotate log files natively. Pair it with `logrotate` on Linux to cap log file size:
+
+```
+/path/to/napcat/logs/*.log {
+    daily
+    rotate 7
+    compress
+    missingok
+    notifempty
+}
+```
+</Accordion>
+
+<Accordion title="Running multiple QQ accounts simultaneously">
+**Symptom:** You need to run two or more QQ bot accounts side-by-side but only one instance starts correctly.
+
+**Cause:** Each NapCat instance hosts exactly one QQ account. Running two accounts in the same instance is not supported.
+
+**Fix:** Start a separate NapCat process for each account, using a distinct configuration directory and network ports for each:
+
+```bash
+# Account A — ports 6099 / 3000
+NAPCAT_CONFIG_DIR=/data/bot-a napcat
+
+# Account B — ports 6199 / 3100 (edit napcat.json accordingly)
+NAPCAT_CONFIG_DIR=/data/bot-b napcat
+```
+
+Make sure all HTTP server, WebSocket server, and WebUI ports are different between instances. You can manage multiple instances with `pm2`, `systemd` template units (`napcat@bot-a.service`), or Docker containers.
+</Accordion>
+
+<Accordion title="How to update NapCat">
+**Option 1 — WebUI update page (recommended):**
+
+1. Open the NapCat WebUI at `http://localhost:6099`.
+2. Navigate to **System → Update**.
+3. If a newer release is available, click **Update Now**. NapCat will download the release archive, replace its own files, and restart automatically.
+
+**Option 2 — Manual update from GitHub:**
+
+1. Go to the [NapCat releases page](https://github.com/NapNeko/NapCatQQ/releases) and download the latest archive for your platform.
+2. Stop the running NapCat instance.
+3. Extract the archive over your existing NapCat installation directory, overwriting the files.
+4. Start NapCat again.
+
+<Warning>
+Always verify that the new NapCat release supports your installed NTQQ version before updating. An incompatible combination will prevent NapCat from starting. Check the release notes for the exact supported QQ version string.
+</Warning>
+
+**Option 3 — Package manager / Docker:**
+
+If you installed NapCat via a community package or Docker image, use the standard update mechanism for that distribution (e.g. `docker pull`, `apt upgrade`, etc.).
+</Accordion>

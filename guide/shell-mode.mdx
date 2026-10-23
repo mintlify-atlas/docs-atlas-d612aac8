@@ -1,0 +1,200 @@
+---
+title: "Run NapCat in Shell mode as a standalone process"
+sidebarTitle: "Shell Mode"
+description: "Shell mode runs NapCat as its own process alongside NTQQ, using named-pipe IPC and multi-process supervision for robust restarts and lifecycle management."
+---
+
+Shell mode is the recommended deployment strategy for most users who want to run NapCat independently of the NTQQ Electron window. In this mode NapCat launches as a **standalone Node.js process** that sits alongside NTQQ, communicates with it through a Windows named pipe for stdout forwarding, and manages an inner **worker subprocess** that hosts the actual NapCat core. This parent–worker split means a restart of the core never requires killing the outer supervisor, and crash-recovery logic can detect and handle rapid crash loops automatically.
+
+## Architecture overview
+
+The Shell mode entry point is `packages/napcat-shell/napcat.ts`. When it starts, it reads a `config/.env` file (if present) to populate environment variables, then chooses one of three execution paths:
+
+- **Single-process mode** — when `NAPCAT_DISABLE_MULTI_PROCESS=1` or `NAPCAT_DISABLE_MULTIPROCESSING=1` is set, `NCoreInitShell()` is called directly with no subprocess involved.
+- **Master process** — the default path; connects to the named pipe, then spawns a worker subprocess.
+- **Worker process** — when `NAPCAT_WORKER_PROCESS=1` is set (injected by the master), runs `NCoreInitShell()` and forwards lifecycle events back to the master via IPC.
+
+The **named pipe** (`\\.\pipe\NapCat_<pid>`) is a Windows-only mechanism that redirects the worker's `stdout` to the pipe socket, allowing the master (or a wrapper program like `NapCatWinBootMain.exe`) to capture and display output.
+
+```
+┌──────────────────────────────┐
+│      Master Process          │
+│  (napcat.ts, multi-process)  │
+│                              │
+│  ┌──────────────────────┐    │
+│  │  Named Pipe (Win32)  │    │
+│  └──────────────────────┘    │
+│                              │
+│  ┌──────────────────────┐    │
+│  │   Worker Subprocess  │◄───┼── NAPCAT_WORKER_PROCESS=1
+│  │   (NCoreInitShell)   │    │
+│  └──────────────────────┘    │
+└──────────────────────────────┘
+```
+
+## Environment variables
+
+The following environment variables alter Shell mode's runtime behaviour. Set them before launching or add them to the `config/.env` file next to `napcat.mjs`.
+
+| Variable | Value | Effect |
+|---|---|---|
+| `NAPCAT_WORKER_PROCESS` | `1` | Marks the current process as the worker child; injected automatically by the master. |
+| `NAPCAT_DISABLE_MULTI_PROCESS` | `1` | Disables the parent–worker split; NapCat runs entirely in a single process. |
+| `NAPCAT_DISABLE_MULTIPROCESSING` | `1` | Alias for `NAPCAT_DISABLE_MULTI_PROCESS`. |
+| `NAPCAT_DISABLE_PIPE` | `1` | Skips named-pipe IPC; stdout is not redirected. Useful on Linux or when you need plain console output. |
+| `NAPCAT_DISABLE_BYPASS` | `1` | Prevents `Napi2NativeLoader` from enabling the native bypass patches. |
+| `NAPCAT_PRELOAD_NODE_ADDON_PATH` | path | Pre-loads a native `.node` addon via `process.dlopen` with `RTLD_GLOBAL` before core initialisation. |
+| `NAPCAT_QUICK_ACCOUNT` | QQ UIN | UIN to attempt quick login automatically on startup. |
+| `NAPCAT_QUICK_PASSWORD` | plaintext | Password used to compute an MD5 for automatic password login fallback. |
+| `NAPCAT_QUICK_PASSWORD_MD5` | 32-char hex | Precomputed MD5 used directly for password login fallback. |
+
+<Note>
+`NAPCAT_WORKER_PROCESS=1` is injected by the master at subprocess creation. You should **never** set it manually unless you are debugging the worker in isolation.
+</Note>
+
+## Multi-process lifecycle
+
+Understanding the lifecycle helps when diagnosing restart failures or crash loops.
+
+<Steps>
+
+### Master connects to the named pipe
+
+On Windows the master calls `connectToNamedPipe()`, which opens `\\.\pipe\NapCat_<pid>` and rewires `process.stdout` through the socket so all worker output is forwarded.
+
+### Master spawns the worker
+
+`startWorker()` creates a child process (either `electron.utilityProcess.fork` or Node's `child_process.fork`, depending on the host runtime) and sets `NAPCAT_WORKER_PROCESS=1` in the child's environment alongside any inherited configuration.
+
+### Worker runs `NCoreInitShell()`
+
+Inside the worker, the NapCat core starts: QQ wrapper loads, the login service initialises, and the WebUI begins listening. After a successful QR code or quick-login, the worker sends `{ type: 'login-success' }` to the master so the master can switch from an aggressive crash-recovery policy to a gentler one.
+
+### Worker signals a restart
+
+When the WebUI's restart button is pressed, the worker sends `{ type: 'restart', secretKey, port }` to the master. The master calls `restartWorker()`, which:
+1. Sends `restart-prepare` to the old worker (gives it 5 seconds to self-exit).
+2. Falls back to `shutdown` + `kill()` if the worker does not exit.
+3. Waits 3 seconds, then starts a new worker with the inherited `secretKey` and `port` so the WebUI session continues seamlessly.
+
+### Crash recovery
+
+If the worker exits unexpectedly (non-zero exit code, not caused by a restart or shutdown), the master records a timestamp and increments a crash counter. If **3 crashes happen within 10 seconds**, the master logs a critical error and exits with code 1. Otherwise it automatically relaunches the worker.
+
+### Graceful shutdown
+
+`SIGINT` or `SIGTERM` on the master sends `{ type: 'shutdown' }` to the worker, then force-kills it after 1 second before exiting.
+
+</Steps>
+
+## Launching Shell mode
+
+<Tabs>
+  <Tab title="Windows">
+
+The simplest way to launch on Windows is the bundled `launcher.bat` script, which detects QQ's installation path from the registry and invokes `NapCatWinBootMain.exe`:
+
+```bash
+# From inside the NapCat.Shell.Windows.Node bundle:
+.\napcat.bat
+
+# Or run the loader script directly (requires administrator privileges):
+.\launcher.bat
+```
+
+The loader sets the following paths before launching:
+
+```bash
+NAPCAT_PATCH_PACKAGE=<dir>\qqnt.json
+NAPCAT_LOAD_PATH=<dir>\loadNapCat.js
+NAPCAT_INJECT_PATH=<dir>\NapCatWinBootHook.dll
+NAPCAT_LAUNCHER_PATH=<dir>\NapCatWinBootMain.exe
+NAPCAT_MAIN_PATH=<dir>\napcat.mjs
+```
+
+For **quick login** to a previously saved account, pass the `-q` flag:
+
+```bash
+.\napcat.bat -q 123456789
+```
+
+To run in **single-process mode** (useful for debugging):
+
+```bash
+set NAPCAT_DISABLE_MULTI_PROCESS=1
+.\napcat.bat
+```
+
+To disable the named pipe (plain console output):
+
+```bash
+set NAPCAT_DISABLE_PIPE=1
+.\napcat.bat
+```
+
+  </Tab>
+  <Tab title="Linux">
+
+On Linux the named pipe is a no-op (the function returns immediately without connecting), so you can run the Shell bundle directly with Node.js:
+
+```bash
+# Using the bundled node binary (NapCat.Shell.Windows.Node Linux variant):
+node napcat.mjs
+
+# Or, if you have a compatible Node.js 20+ installed globally:
+node /path/to/napcat/napcat.mjs
+```
+
+Pass `-q` for quick login:
+
+```bash
+node napcat.mjs -q 123456789
+```
+
+Run in single-process mode (no subprocess supervision):
+
+```bash
+NAPCAT_DISABLE_MULTI_PROCESS=1 node napcat.mjs
+```
+
+Disable the native bypass patches:
+
+```bash
+NAPCAT_DISABLE_BYPASS=1 node napcat.mjs
+```
+
+  </Tab>
+</Tabs>
+
+## IPC message reference
+
+The master and worker communicate using a typed message channel. These messages are never sent by external tooling — they flow only between parent and child processes.
+
+| Message type | Direction | Meaning |
+|---|---|---|
+| `login-success` | Worker → Master | QQ login completed; master switches to lenient crash policy. |
+| `restart` | Worker → Master | Worker requests a full restart; carries optional `secretKey` and `port`. |
+| `restart-prepare` | Master → Worker | Tells the worker to flush state and exit cleanly within 5 seconds. |
+| `shutdown` | Master → Worker | Immediate shutdown; worker exits with code 0 within 100 ms. |
+
+## Crash-loop protection
+
+The master records the Unix timestamp of every unexpected worker exit. Before relaunching, it removes timestamps older than **10 seconds** from a sliding window. If the window accumulates **3 or more crashes**, the master stops retrying and exits with code 1. This prevents a broken NapCat build or misconfigured system from spinning infinitely.
+
+<Warning>
+If NapCat exits immediately with "Worker进程在 10 秒内异常退出 3 次" in the logs, the core is crashing on startup. Check the worker's stderr output (forwarded directly to the master's stderr) for the underlying error before attempting a restart.
+</Warning>
+
+## Single-process mode
+
+When `NAPCAT_DISABLE_MULTI_PROCESS=1` is set the master calls `NCoreInitShell()` directly, skipping process management entirely. This is equivalent to running the worker code inline:
+
+- No crash recovery or automatic restarts.
+- The named pipe is still connected on Windows unless `NAPCAT_DISABLE_PIPE=1` is also set.
+- The WebUI restart button will report that it "cannot communicate with the master process" and will not work — you must restart the process manually.
+
+Single-process mode is primarily useful for **container deployments** and **debugging** where you want complete control over the process lifecycle from outside.
+
+<Tip>
+When deploying inside Docker, always set `NAPCAT_DISABLE_MULTI_PROCESS=1`. Container orchestrators such as Docker Compose and Kubernetes already provide restart policies — the extra subprocess layer adds no value and complicates log collection. See the [Docker deployment guide](/guide/docker) for a complete example.
+</Tip>

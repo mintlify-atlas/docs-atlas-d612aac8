@@ -1,0 +1,137 @@
+---
+title: "Load NapCat as a Framework plugin inside NTQQ"
+sidebarTitle: "Framework Mode"
+description: "Framework mode loads NapCat directly inside the NTQQ Electron process, sharing its runtime and live session objects for tighter, zero-overhead integration."
+---
+
+Framework mode is the alternative to Shell mode for users who are already running NTQQ on a desktop machine and want NapCat to live inside the same Electron process. Instead of starting a separate Node.js supervisor and worker, NapCat is loaded as a plugin that receives the live NTQQ session and login service objects directly, with no inter-process communication overhead and no named-pipe layer. This gives Framework mode lower latency and direct access to every internal NTQQ API.
+
+The entry point for Framework mode is `packages/napcat-framework/napcat.ts`. It exports two public symbols used by the NTQQ plugin loader:
+
+- **`NCoreInitFramework`** — the async initialisation function that bootstraps the full NapCat core.
+- **`getWebUiUrl`** — a helper that returns the local WebUI URL including the authentication token.
+
+## How Framework mode is loaded
+
+NTQQ's plugin system calls `NCoreInitFramework` after the QQ window is ready, passing in three objects it already owns:
+
+```typescript
+export async function NCoreInitFramework(
+  session: NodeIQQNTWrapperSession,
+  loginService: NodeIKernelLoginService,
+  registerInitCallback: (callback: () => void) => void
+): Promise<void>
+```
+
+| Parameter | Type | Description |
+|---|---|---|
+| `session` | `NodeIQQNTWrapperSession` | The live NTQQ session wrapper, giving direct access to message, group, friend, and other kernel services. |
+| `loginService` | `NodeIKernelLoginService` | The kernel login service, used to add login event listeners and trigger QR code generation. |
+| `registerInitCallback` | `(callback: () => void) => void` | A registrar provided by NTQQ; the callback passed here is invoked once the QR code login succeeds, signalling that the session is fully ready. |
+
+<Note>
+Framework mode requires a **compatible NTQQ version**. NapCat uses `QQBasicInfoWrapper` to detect the QQ application version, path, and capabilities at runtime. If the detected QQ version is too old or its internal structure has changed, NapCat may fail to initialise the native packet handler or the session wrapper. Always use the NTQQ version bundled with the official NapCat Framework release package.
+</Note>
+
+## Initialisation sequence
+
+When `NCoreInitFramework` is called it performs the following steps in order:
+
+1. **Sets up unhandled exception handlers** so crashes surface in NapCat's own logs rather than silently terminating NTQQ.
+2. **Builds path, logger, and config objects** — `NapCatPathWrapper`, `LogWrapper`, and `loadNapcatConfig` — using the same config directory as Shell mode.
+3. **Applies pending updates** via `applyPendingUpdates`, so any queued NapCat upgrade is installed before anything else runs.
+4. **Loads the QQ wrapper** via `loadQQWrapper` to obtain the `WrapperNodeApi` handle that bridges JavaScript and the native `wrapper.node` module.
+5. **Initialises `NativePacketHandler` and `Napi2NativeLoader`** for packet-level access (see below).
+6. **Enables native bypasses** (unless `NAPCAT_DISABLE_BYPASS=1`) by calling `napi2nativeLoader.nativeExports.enableAllBypasses()`.
+7. **Starts the WebUI** via `InitWebUi` — the WebUI is intentionally started before login so users can scan the QR code through the browser.
+8. **Registers login event listeners** — `onQRCodeLoginSucceed`, `onQRCodeGetPicture`, `onQRCodeSessionFailed`, `onLoginFailed`, `onLoginConnected` and more — that mirror all login state changes into `WebUiDataRuntime`.
+9. **Waits for `registerInitCallback`** to fire, which happens only after QR code login completes and NTQQ confirms the session is initialised.
+10. **Initialises `NapCatCore`** via `loaderObject.core.initCore()` and registers protocol adapters through `NapCatAdapterManager`.
+
+## Native packet access
+
+Both `NativePacketHandler` and `Napi2NativeLoader` are initialised in Framework mode, just as in Shell mode:
+
+- **`NativePacketHandler`** hooks into NTQQ's internal packet pipeline so NapCat can intercept and decode raw QQNT protocol packets (for example `OidbSvcTrpcTcp.0xcde_2` to extract the SQLite database passphrase before login).
+- **`Napi2NativeLoader`** provides the native bypass interface that patches certain NTQQ internal checks. Bypasses are configured through the `bypass` section of `napcat.json` and can be disabled entirely with `NAPCAT_DISABLE_BYPASS=1`.
+
+```typescript
+// Both are created early in NCoreInitFramework, before the login listener is registered:
+const nativePacketHandler = new NativePacketHandler({ logger });
+const napi2nativeLoader = new Napi2NativeLoader({ logger });
+
+await nativePacketHandler.init(basicInfoWrapper.getFullQQVersion(), napcatConfig.o3HookMode === 1);
+
+if (process.env['NAPCAT_DISABLE_BYPASS'] !== '1') {
+  const bypassOptions = napcatConfig.bypass ?? {};
+  napi2nativeLoader.nativeExports.enableAllBypasses?.(bypassOptions);
+}
+```
+
+## Getting the WebUI URL
+
+Once the Framework plugin is loaded you can retrieve the WebUI URL at any time using the exported helper:
+
+```typescript
+import { getWebUiUrl } from './napcat'; // packages/napcat-framework/napcat.ts
+
+const url = await getWebUiUrl();
+// Returns e.g. "http://127.0.0.1:6099/webui/?token=eyJhbGci..."
+console.log('Open NapCat WebUI at:', url);
+```
+
+Internally, `getWebUiUrl` reads the current WebUI configuration (which includes the auto-generated auth token) and the runtime port, then constructs the local URL:
+
+```typescript
+export async function getWebUiUrl() {
+  const WebUiConfigData = (await WebUiConfig.GetWebUIConfig());
+  return 'http://127.0.0.1:' + webUiRuntimePort + '/webui/?token=' + encodeURIComponent(WebUiConfigData.token);
+}
+```
+
+The token is required for all WebUI API calls and is also embedded in the URL when you open the WebUI from a browser.
+
+## Offline recovery
+
+Framework mode registers the same offline recovery logic as Shell mode. When a `KickedOffLine` or `SelfOffline` event arrives from the NTQQ kernel, NapCat:
+
+1. Updates `WebUiDataRuntime` to reflect the offline state and clears the displayed QR code URL.
+2. Calls `WebUiDataRuntime.requestRestartProcess()` to ask the parent process (or the WebUI) to trigger a worker restart so a fresh login service can be created.
+3. If the restart fails, sets the login phase to `'offline'` and surfaces an error in the WebUI.
+
+## Framework mode vs Shell mode
+
+<CardGroup cols={2}>
+  <Card title="Framework mode" icon="puzzle-piece">
+    - Runs **inside** the NTQQ Electron process — no separate process to manage
+    - **Direct session access** — no IPC overhead between NapCat and QQ kernel
+    - Login lifecycle is driven by NTQQ's own login service — QR codes appear in the NapCat WebUI
+    - Requires NTQQ to be **running on the same machine** with a compatible version
+    - Ideal for desktop users who already launch QQ on their machine and want NapCat alongside
+  </Card>
+  <Card title="Shell mode" icon="terminal">
+    - Runs as a **standalone process** — NTQQ does not need to be a running Electron app
+    - Parent–worker architecture provides **automatic crash recovery**
+    - Works with **headless Linux servers** via the Node loader or Docker
+    - The named pipe forwards worker stdout on Windows; on Linux stdout is plain console output
+    - Ideal for servers, containers, and CI environments where a GUI is not available
+  </Card>
+</CardGroup>
+
+Choose **Framework mode** when you are deploying on a personal Windows desktop where NTQQ is already installed and you want the tightest possible integration. Choose **Shell mode** (or [Docker](/guide/docker)) when you need to run NapCat on a headless server, inside a container, or in any environment where a full Electron QQ window is impractical.
+
+## Environment variables in Framework mode
+
+Framework mode honours the same subset of environment variables as Shell mode:
+
+| Variable | Value | Effect |
+|---|---|---|
+| `NAPCAT_DISABLE_BYPASS` | `1` | Disables all native bypass patches loaded by `Napi2NativeLoader`. |
+| `NAPCAT_ENABLE_VERBOSE_LOG` | `1` | Enables verbose logging in the native layer via `nativeExports.setVerbose(true)`. |
+| `NAPCAT_PROXY_PORT` | port number | Routes NTQQ's MSF service connections through a SOCKS5 proxy at the given port. |
+| `NAPCAT_PROXY_ADDRESS` | IP address | The proxy host (default `127.0.0.1`) used together with `NAPCAT_PROXY_PORT`. |
+| `NAPCAT_PROXY_CLOSE` | any | Clears any existing network proxy configuration on the session. |
+
+<Warning>
+Framework mode does **not** support `NAPCAT_DISABLE_MULTI_PROCESS` or `NAPCAT_WORKER_PROCESS`, because it never spawns subprocesses. Those variables are meaningful only in Shell mode.
+</Warning>

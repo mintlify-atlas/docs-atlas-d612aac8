@@ -1,0 +1,207 @@
+---
+title: "Manage NapCat with the built-in WebUI"
+sidebarTitle: "WebUI"
+description: "Access the NapCat WebUI at http://127.0.0.1:6099/webui to log in, configure network adapters, manage plugins, and monitor logs."
+---
+
+NapCat ships with a built-in web-based management interface called the WebUI. It gives you a browser-accessible dashboard for logging in to QQ, configuring all network adapters, managing plugins, viewing live logs, and checking system status — all without touching a config file. The WebUI is powered by an Express server that starts automatically alongside NapCat on port **6099** by default.
+
+## Accessing the WebUI
+
+The default URL is:
+
+```
+http://127.0.0.1:6099/webui
+```
+
+On first start, NapCat detects that no custom token has been configured, generates a random 8-character token, and prints the full URL (including the token query parameter) to the console:
+
+```
+[NapCat] [WebUi] WebUi Token: a1b2c3d4
+[NapCat] [WebUi] WebUi User Panel Url: http://127.0.0.1:6099/webui?token=a1b2c3d4
+```
+
+Copy the printed URL and open it in your browser. The `?token=` parameter authenticates your session on first access.
+
+<Note>
+  The `?token=` query parameter is only required for the initial page load. After you open the URL, NapCat sets a session cookie in your browser so subsequent navigation and API calls within the same browser session are automatically authenticated. You do not need to include the token in every subsequent request.
+</Note>
+
+## First-login flow
+
+<Steps>
+  <Step title="Find the access URL in the console">
+    After NapCat starts, look for the line beginning with `WebUi User Panel Url:` in the terminal output. Copy the full URL including the `?token=` parameter — this is your one-time access link.
+  </Step>
+
+  <Step title="Open the WebUI in your browser">
+    Paste the URL into any modern browser. NapCat will validate the token, create a session cookie, and redirect you to the Login page.
+  </Step>
+
+  <Step title="Choose a login method">
+    The Login page offers several ways to authenticate with QQ:
+
+    - **QR Code** — Display a QR code and scan it with the QQ mobile app.
+    - **Quick Login** — Re-use a previously authenticated session stored on disk (appears only when a cached session exists).
+    - **Password Login** — Enter your QQ number and password. NapCat transmits the MD5 hash of your password, never the plaintext.
+    - **New-Device Login** — Complete a new-device verification challenge when QQ flags the login from an unrecognised device.
+    - **Captcha Login** — Solve a CAPTCHA challenge when QQ requires one during password login.
+  </Step>
+
+  <Step title="Wait for QQ to go online">
+    After submitting your login credentials or scanning the QR code, NapCat waits for QQ to confirm the session. The login page shows a real-time status indicator. Once the account is online you are redirected to the Dashboard.
+  </Step>
+
+  <Step title="Configure your bot">
+    You are now on the Dashboard. Navigate to **Network** to add HTTP or WebSocket adapters, visit **Plugins** to install and manage plugins, and check **Logs** to monitor real-time output.
+  </Step>
+</Steps>
+
+## WebUI sections
+
+<CardGroup cols={2}>
+  <Card title="Dashboard" icon="house">
+    Overview of the bot's current login state, QQ account information, online status, and a quick summary of active network adapters.
+  </Card>
+  <Card title="Login" icon="right-to-bracket">
+    Manage the QQ account session. Log out, switch accounts, or initiate a new login via QR code, quick login, password, new-device verification, or CAPTCHA.
+  </Card>
+  <Card title="Network" icon="network-wired">
+    Add, remove, enable, or disable HTTP servers, SSE servers, webhooks, WebSocket servers, WebSocket clients, and plugin adapters. All changes are written to `onebot11_{uin}.json` immediately.
+  </Card>
+  <Card title="Plugins" icon="puzzle-piece">
+    Browse installed NapCat plugins, enable or disable individual plugins, and view their configuration pages if provided.
+  </Card>
+  <Card title="Logs" icon="scroll">
+    Browse and download historical log files. A live log viewer streams new output in real time via WebSocket so you can monitor events without SSH access.
+  </Card>
+  <Card title="System" icon="circle-info">
+    Displays the NapCat version, Node.js version, platform, memory usage, and other runtime information.
+  </Card>
+  <Card title="Update" icon="arrow-up-right-dots">
+    Check for new NapCat releases and trigger an in-place update from the mirror of your choice without leaving the browser.
+  </Card>
+  <Card title="Settings" icon="gear">
+    Change the WebUI port, token, host binding, IP access control lists, HTTPS certificates, and two-factor authentication options.
+  </Card>
+</CardGroup>
+
+## WebUI configuration (webui.json)
+
+The WebUI's own settings are stored in `webui.json` inside the configuration directory. You can edit this file directly or update most values through the **Settings** page of the WebUI.
+
+<ParamField body="host" type="string" default="::">
+  Network interface the WebUI HTTP server binds to. `"::"` listens on all IPv4 and IPv6 interfaces. Change to `"127.0.0.1"` to restrict access to localhost only.
+</ParamField>
+
+<ParamField body="port" type="number" default="6099">
+  TCP port for the WebUI. If 6099 is already in use on your system, NapCat will automatically try the next available port (up to 100 attempts). Set a specific value here if you always want a fixed port.
+</ParamField>
+
+<ParamField body="token" type="string">
+  The authentication token for the WebUI. On first run this is auto-generated to a random 8-character string and printed to the console. You can change it to a custom value; the change takes effect after a restart. You can also set it via the environment variable `NAPCAT_WEBUI_SECRET_KEY`, which takes precedence over the file value.
+</ParamField>
+
+<ParamField body="loginRate" type="number" default="10">
+  Maximum number of failed login attempts allowed per minute before the WebUI rate-limits further attempts. Increase this value only if you are automating logins in a trusted environment.
+</ParamField>
+
+<ParamField body="disableWebUI" type="boolean" default="false">
+  Set to `true` to prevent the WebUI from starting at all. Useful in fully headless deployments where the UI is never needed and you want to minimise the attack surface.
+</ParamField>
+
+<ParamField body="accessControlMode" type="string" default="none">
+  IP-based access control mode. Accepted values:
+
+  | Value | Behaviour |
+  |-------|-----------|
+  | `"none"` | All IPs are allowed to connect. |
+  | `"whitelist"` | Only IPs listed in `ipWhitelist` are allowed. |
+  | `"blacklist"` | IPs listed in `ipBlacklist` are denied; all others are allowed. |
+</ParamField>
+
+<ParamField body="ipWhitelist" type="array">
+  List of IP addresses permitted to access the WebUI when `accessControlMode` is `"whitelist"`, for example `["192.168.1.100", "10.0.0.5"]`.
+</ParamField>
+
+<ParamField body="ipBlacklist" type="array">
+  List of IP addresses denied access to the WebUI when `accessControlMode` is `"blacklist"`.
+</ParamField>
+
+<ParamField body="enableXForwardedFor" type="boolean" default="false">
+  When `true`, NapCat reads the client's real IP from the `X-Forwarded-For` header instead of the TCP remote address. Enable this only when NapCat runs behind a trusted reverse proxy (e.g. nginx).
+</ParamField>
+
+<ParamField body="enable2FA" type="boolean" default="false">
+  Enable Time-based One-Time Password (TOTP) two-factor authentication for the WebUI. When enabled, users must provide a valid TOTP code from an authenticator app (Google Authenticator, Authy, etc.) in addition to the token.
+</ParamField>
+
+### Example webui.json
+
+```json webui.json
+{
+  "host": "127.0.0.1",
+  "port": 6099,
+  "token": "change-me-please",
+  "loginRate": 10,
+  "autoLoginAccount": "",
+  "disableWebUI": false,
+  "accessControlMode": "none",
+  "ipWhitelist": [],
+  "ipBlacklist": [],
+  "enableXForwardedFor": false,
+  "enable2FA": false,
+  "totpSecret": ""
+}
+```
+
+## Changing the WebUI port
+
+If port 6099 is already occupied, NapCat tries the next 100 ports sequentially (6100, 6101, …) and logs the actual port it binds to. To pin a specific port:
+
+1. Open (or create) `webui.json` in the configuration directory.
+2. Set `"port"` to your desired value, for example `7099`.
+3. Restart NapCat.
+
+Alternatively, set the environment variable `NAPCAT_WEBUI_PREFERRED_PORT` to your preferred port before starting NapCat. The environment variable takes first priority; `webui.json` is used as the fallback.
+
+```bash
+NAPCAT_WEBUI_PREFERRED_PORT=7099 node napcat.mjs
+```
+
+## HTTPS support
+
+NapCat can serve the WebUI over HTTPS without a reverse proxy by placing PEM-format certificate files in the configuration directory:
+
+| File | Contents |
+|------|----------|
+| `cert.pem` | The TLS certificate (PEM format, including the full chain). |
+| `key.pem` | The corresponding private key (PEM format). |
+
+When both files are present on startup, NapCat switches to HTTPS mode automatically. The WebUI URL becomes `https://127.0.0.1:6099/webui`.
+
+<Warning>
+  Restart NapCat after adding or removing certificate files. Changes to `cert.pem` and `key.pem` are read only at startup — a running instance will not pick up new certificates without a restart.
+</Warning>
+
+You can also upload certificate content directly from the **Settings → SSL** page in the WebUI, which writes the files to the correct location for you.
+
+## Backup and restore configuration
+
+The WebUI supports exporting and importing the full NapCat configuration set (napcat.json, network config, and WebUI settings) as a single archive. Use the **Backup** button on the Dashboard or Settings page to download a snapshot, and the **Restore** button to apply a previously saved snapshot. This is useful when migrating to a new host or rolling back a misconfiguration.
+
+<Tip>
+  Before making significant changes to the network adapters or bypass options, create a backup. If the bot stops responding after a config change, you can restore the last known-good snapshot from the WebUI without needing shell access.
+</Tip>
+
+## Auto-login
+
+The WebUI supports configuring an account for automatic login on startup. When `autoLoginAccount` is set in `webui.json` (or via the **Settings** page), NapCat attempts a quick login for that QQ number as soon as the process starts. If quick login fails, it optionally falls back to password login using the environment variables `NAPCAT_QUICK_PASSWORD` or `NAPCAT_QUICK_PASSWORD_MD5`.
+
+```bash
+# Quick login + password fallback (plaintext — hashed in memory, not persisted)
+NAPCAT_QUICK_ACCOUNT=123456789 NAPCAT_QUICK_PASSWORD=mypassword node napcat.mjs
+
+# Quick login + password fallback (pre-hashed MD5)
+NAPCAT_QUICK_ACCOUNT=123456789 NAPCAT_QUICK_PASSWORD_MD5=098f6bcd4621d373cade4e832627b4f6 node napcat.mjs
+```

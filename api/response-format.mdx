@@ -1,0 +1,191 @@
+---
+title: "Understanding NapCat API response format and error codes"
+sidebarTitle: "Response Format"
+description: "Detailed breakdown of the OB11Return envelope returned by every NapCat action, including status, retcode, data, error messages, and all error codes."
+---
+
+Every NapCat action — whether called over HTTP POST or WebSocket — returns a consistent JSON envelope defined by the `OB11Return<T>` type. Understanding this envelope lets you reliably detect success, extract result data, and handle errors without special-casing individual actions. This page documents every field in the envelope and lists all retcodes NapCat can produce.
+
+## Response envelope
+
+The full `OB11Return<T>` shape returned by every action is:
+
+```typescript
+interface OB11Return<T> {
+  status:  string;           // 'ok' | 'failed'
+  retcode: number;           // 0 on success; non-zero on error
+  data:    T | null;         // result payload, or null on error
+  message: string;           // human-readable error description
+  wording: string;           // same as message (compatibility alias)
+  echo:    unknown;          // echoed back from the request unchanged
+  stream:  string;           // 'normal-action' | 'stream-action'
+}
+```
+
+### Field reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `string` | `'ok'` when the action succeeded; `'failed'` when it did not. |
+| `retcode` | `number` | `0` on success. A non-zero code indicates the error category (see table below). |
+| `data` | `T \| null` | The action's result payload on success; `null` on error. For streaming actions in an error state, this is a `StreamPacketBasic` with `type: 'error'` instead of `null`. |
+| `message` | `string` | A human-readable description of the error. Empty string on success. |
+| `wording` | `string` | Identical to `message`. Provided for compatibility with clients that read `wording` instead of `message`. |
+| `echo` | `unknown` | The value you passed in the `echo` field of your request, returned unchanged. Use this to correlate WebSocket responses with outstanding requests. `null` if no echo was provided. |
+| `stream` | `string` | `'normal-action'` for standard request/response actions; `'stream-action'` for actions that use the streaming transport. |
+
+## Success and error examples
+
+<CodeGroup>
+```json Success
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "message_id": 12345 },
+  "message": "",
+  "wording": "",
+  "echo": "my-request-id"
+}
+```
+
+```json Error
+{
+  "status": "failed",
+  "retcode": 1400,
+  "data": null,
+  "message": "Key: .group_id, Message: Expected number",
+  "wording": "Key: .group_id, Message: Expected number",
+  "echo": "my-request-id"
+}
+```
+</CodeGroup>
+
+## Error code table
+
+NapCat uses distinct retcodes depending on both the error kind and the transport that was used. HTTP and WebSocket handlers produce different codes for the same class of error, so you can always tell whether a validation failure came from the HTTP layer or a WebSocket frame.
+
+| Code | Trigger | Meaning |
+|------|---------|---------|
+| `0` | Success (any transport) | The action completed successfully. `data` contains the result. |
+| `200` | Execution error (HTTP) | The action ran but encountered a business-logic error. |
+| `400` | Validation error (HTTP) | One or more request parameters failed schema validation. |
+| `1200` | Execution error (WebSocket) | The action ran but encountered a business-logic error. |
+| `1400` | Validation error (WebSocket) | One or more request parameters failed schema validation. |
+| `1401` | Permission error (any transport) | The bot does not have sufficient permissions to perform the action. |
+| `1404` | Not found (any transport) | The requested resource (message, file, user, etc.) does not exist. |
+
+<Note>
+  Codes `200` and `1200` both represent execution errors — the difference is only the transport. The same is true for `400` and `1400`. If you want transport-independent error handling, treat `200`/`1200` together and `400`/`1400` together.
+</Note>
+
+## How validation errors look
+
+When a parameter fails schema validation, `message` (and `wording`) contain one line per invalid field in the format:
+
+```
+Key: <field_path>, Message: <description>
+```
+
+Multiple validation errors are joined by newlines. For example, passing a string where a number is required for `group_id` produces:
+
+```
+Key: .group_id, Message: Expected number
+```
+
+<Tip>
+  NapCat uses [TypeBox](https://github.com/sinclairzx81/typebox) for schema validation. Field paths in error messages use dot notation rooted at the payload object (e.g. `.message[0].data.text`).
+</Tip>
+
+## Streaming actions
+
+Actions that use the streaming transport (identified by `stream: 'stream-action'`) follow the same `OB11Return<T>` envelope, but their `data` field carries a `StreamPacketBasic` object during normal operation rather than a plain result value. On error, instead of `data: null`, a streaming action returns:
+
+```json
+{
+  "status": "failed",
+  "retcode": 1200,
+  "data": { "type": "error", "data_type": "error" },
+  "message": "...",
+  "wording": "...",
+  "echo": null,
+  "stream": "stream-action"
+}
+```
+
+<Warning>
+  Do not check `data === null` as your only signal of failure for streaming actions. Always check `status === 'failed'` or `retcode !== 0` first.
+</Warning>
+
+## Checking responses in code
+
+Below are minimal examples of reading a NapCat response in TypeScript and Python.
+
+<CodeGroup>
+```typescript TypeScript
+interface OB11Return<T> {
+  status: string;
+  retcode: number;
+  data: T | null;
+  message: string;
+  wording: string;
+  echo: unknown;
+  stream: string;
+}
+
+async function callAction<T>(
+  action: string,
+  params: Record<string, unknown>
+): Promise<T> {
+  const res = await fetch(`http://127.0.0.1:3000/${action}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer your_token_here',
+    },
+    body: JSON.stringify(params),
+  });
+
+  const json: OB11Return<T> = await res.json();
+
+  if (json.status !== 'ok' || json.retcode !== 0) {
+    throw new Error(`Action ${action} failed [${json.retcode}]: ${json.message}`);
+  }
+
+  return json.data as T;
+}
+
+// Usage
+const { message_id } = await callAction<{ message_id: number }>('send_group_msg', {
+  group_id: 123456789,
+  message: [{ type: 'text', data: { text: 'Hello!' } }],
+});
+console.log('Sent message ID:', message_id);
+```
+
+```python Python
+import httpx
+
+def call_action(action: str, params: dict, token: str = "your_token_here") -> dict:
+    response = httpx.post(
+        f"http://127.0.0.1:3000/{action}",
+        json=params,
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    response.raise_for_status()
+    body = response.json()
+
+    if body["status"] != "ok" or body["retcode"] != 0:
+        raise RuntimeError(
+            f"Action '{action}' failed [{body['retcode']}]: {body['message']}"
+        )
+
+    return body["data"]
+
+# Usage
+data = call_action("send_group_msg", {
+    "group_id": 123456789,
+    "message": [{"type": "text", "data": {"text": "Hello!"}}],
+})
+print("Sent message ID:", data["message_id"])
+```
+</CodeGroup>

@@ -1,0 +1,385 @@
+---
+title: "Friend and user management API in NapCat"
+sidebarTitle: "Friends"
+description: "Complete reference for OneBot 11 friend and user actions in NapCat — list friends, query strangers, send likes, set remarks, handle friend requests, and delete contacts."
+---
+
+NapCat implements the full set of OneBot 11 friend and user management actions and extends them with several go-cqhttp compatible additions. These actions let your bot introspect its own contact list, look up any QQ user's profile, respond to incoming friend requests, and maintain friend metadata such as remarks. All actions in this section are available over HTTP POST and WebSocket using the standard request/response envelope.
+
+---
+
+## Querying users
+
+### `get_friend_list`
+
+Returns the complete list of friends for the bot's QQ account. NapCat fetches buddy metadata from its internal friend API and enriches each entry with the user's QQ level pulled from their profile detail.
+
+<ParamField body="no_cache" type="boolean" optional>
+  When `true`, bypasses the local cache and forces a fresh profile fetch for each friend. Accepts the string `"true"` / `"false"` as well. Defaults to `false`.
+</ParamField>
+
+**Response** — array of friend objects.
+
+<ResponseField name="data" type="FriendInfo[]">
+  <Expandable title="FriendInfo fields">
+    <ResponseField name="user_id" type="number">
+      QQ number of the friend.
+    </ResponseField>
+    <ResponseField name="nickname" type="string">
+      QQ nickname of the friend.
+    </ResponseField>
+    <ResponseField name="remark" type="string">
+      Local remark (alias) you have set for this friend. Empty string if none.
+    </ResponseField>
+    <ResponseField name="sex" type="string">
+      Gender: `"male"`, `"female"`, or `"unknown"`.
+    </ResponseField>
+    <ResponseField name="level" type="number">
+      QQ level of the friend, computed from their `qqLevel` field.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/get_friend_list \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{}'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    {
+      "user_id": 10001,
+      "nickname": "Alice",
+      "remark": "Alice Work",
+      "sex": "female",
+      "level": 80
+    }
+  ]
+}
+```
+</CodeGroup>
+
+---
+
+### `get_stranger_info`
+
+Fetches detailed profile information for any QQ user, including non-friends. NapCat calls the NTQQ user detail API and merges profile region, VIP status, and level data into a single rich object.
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the user to look up.
+</ParamField>
+
+<ParamField body="no_cache" type="boolean" optional>
+  When `true`, bypasses the local user cache and re-fetches from the network. Defaults to `false`.
+</ParamField>
+
+**Response** — a detailed user info object.
+
+<ResponseField name="data" type="StrangerInfo">
+  <Expandable title="StrangerInfo fields">
+    <ResponseField name="user_id" type="number">
+      QQ number of the user.
+    </ResponseField>
+    <ResponseField name="uid" type="string">
+      Internal NTQQ UID string for this user.
+    </ResponseField>
+    <ResponseField name="nickname" type="string">
+      QQ nickname of the user.
+    </ResponseField>
+    <ResponseField name="age" type="number">
+      Age as set in the user's QQ profile.
+    </ResponseField>
+    <ResponseField name="qid" type="string">
+      Custom QQ ID (QID) if the user has set one.
+    </ResponseField>
+    <ResponseField name="qqLevel" type="number">
+      Computed QQ level of the user.
+    </ResponseField>
+    <ResponseField name="sex" type="string">
+      Gender: `"male"`, `"female"`, or `"unknown"`.
+    </ResponseField>
+    <ResponseField name="long_nick" type="string">
+      Personal signature / bio from the user's profile.
+    </ResponseField>
+    <ResponseField name="reg_time" type="number">
+      Unix timestamp of the account's registration date.
+    </ResponseField>
+    <ResponseField name="is_vip" type="boolean">
+      Whether the user currently holds a QQ VIP subscription.
+    </ResponseField>
+    <ResponseField name="is_years_vip" type="boolean">
+      Whether the user holds an annual (年费) VIP subscription.
+    </ResponseField>
+    <ResponseField name="vip_level" type="number">
+      Numeric VIP level tier.
+    </ResponseField>
+    <ResponseField name="remark" type="string">
+      Remark set by the bot for this user, if any.
+    </ResponseField>
+    <ResponseField name="status" type="number">
+      Online status code of the user.
+    </ResponseField>
+    <ResponseField name="login_days" type="number">
+      Consecutive login days. Note: this field is no longer populated by NTQQ and will always be `0`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/get_stranger_info \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{"user_id": 10001, "no_cache": false}'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "user_id": 10001,
+    "uid": "u_abc123xyz",
+    "nickname": "Alice",
+    "age": 25,
+    "qid": "alice_qid",
+    "qqLevel": 80,
+    "sex": "female",
+    "long_nick": "Living life one commit at a time.",
+    "reg_time": 1100000000,
+    "is_vip": true,
+    "is_years_vip": false,
+    "vip_level": 3,
+    "remark": "",
+    "status": 10,
+    "login_days": 0
+  }
+}
+```
+</CodeGroup>
+
+---
+
+### `get_login_info`
+
+Returns the QQ number and nickname of the currently logged-in bot account. This is a system-level action but is frequently used alongside friend/user queries to identify the bot itself.
+
+No parameters required.
+
+**Response** — login info object.
+
+<ResponseField name="data" type="LoginInfo">
+  <Expandable title="LoginInfo fields">
+    <ResponseField name="user_id" type="number">
+      QQ number of the logged-in bot account.
+    </ResponseField>
+    <ResponseField name="nickname" type="string">
+      Nickname of the logged-in bot account.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/get_login_info \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{}'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "user_id": 10000,
+    "nickname": "MyBot"
+  }
+}
+```
+</CodeGroup>
+
+---
+
+## Friend interactions
+
+### `send_like`
+
+Sends a profile thumbs-up (点赞) to a user. QQ limits the number of likes you can give to the same person per day; exceeding the limit causes the action to throw an error. The `times` parameter controls how many likes are sent in a single call, up to a maximum of `10`.
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the user to like.
+</ParamField>
+
+<ParamField body="times" type="number" required>
+  Number of likes to send in this call. Valid range is `1` – `10`. Defaults to `1` if omitted. Accepts a numeric string as well.
+</ParamField>
+
+**Response** — `null` on success. Returns an error if the like operation fails (e.g. daily quota exceeded or user does not exist).
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/send_like \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{"user_id": 10001, "times": 10}'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+</CodeGroup>
+
+---
+
+### `set_friend_remark`
+
+Sets or updates the local remark (备注) stored for a friend. Remarks are visible only to the bot's account and do not affect the friend's profile. NapCat verifies that the target user is actually a friend before applying the change.
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the friend whose remark should be updated.
+</ParamField>
+
+<ParamField body="remark" type="string" required>
+  New remark string. Pass an empty string to clear the existing remark.
+</ParamField>
+
+**Response** — `null` on success. Returns an error if the user is not in the bot's friend list.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/set_friend_remark \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{"user_id": 10001, "remark": "Alice Work"}'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+</CodeGroup>
+
+---
+
+## Friend requests
+
+### `set_friend_add_request`
+
+Approves or rejects an incoming friend request. The `flag` value must be obtained from the `request` event posted to your event endpoint — it corresponds to the `reqTime` field in NapCat's internal buddy request record.
+
+<ParamField body="flag" type="string" required>
+  The request flag from the `friend_request` event. This uniquely identifies the pending request in NTQQ's request queue.
+</ParamField>
+
+<ParamField body="approve" type="boolean" optional>
+  `true` to accept the friend request, `false` to reject it. Defaults to `true` when omitted.
+</ParamField>
+
+<ParamField body="remark" type="string" optional>
+  If the request is approved, this remark is automatically applied to the new friend after acceptance. Has no effect when `approve` is `false`.
+</ParamField>
+
+**Response** — `null` on success. Returns an error if no matching request is found for the given flag.
+
+<CodeGroup>
+```bash cURL – approve with remark
+curl -X POST http://127.0.0.1:3000/set_friend_add_request \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "flag": "1700000000",
+    "approve": true,
+    "remark": "New colleague"
+  }'
+```
+
+```bash cURL – reject
+curl -X POST http://127.0.0.1:3000/set_friend_add_request \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "flag": "1700000000",
+    "approve": false
+  }'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+</CodeGroup>
+
+---
+
+## Deleting friends
+
+### `delete_friend`
+
+Removes a user from the bot's friend list. This is a go-cqhttp compatible extension (`delete_friend`). NapCat accepts either `friend_id` or `user_id` as the identifier — both refer to the target's QQ number. You can optionally block the user and control whether deletion is bidirectional.
+
+<Note>
+  If the target user is not currently a friend of the bot account, NapCat returns a descriptive object indicating failure rather than throwing an error, allowing callers to handle the case gracefully.
+</Note>
+
+<ParamField body="user_id" type="number" optional>
+  QQ number of the friend to delete. Either `user_id` or `friend_id` must be provided.
+</ParamField>
+
+<ParamField body="friend_id" type="number" optional>
+  Alias for `user_id`. Provided for go-cqhttp compatibility. `friend_id` takes precedence over `user_id` when both are present.
+</ParamField>
+
+<ParamField body="temp_block" type="boolean" optional>
+  When `true`, adds the deleted user to the block list after removal. Defaults to `false`.
+</ParamField>
+
+<ParamField body="temp_both_del" type="boolean" optional>
+  When `true`, attempts a bidirectional deletion — the bot is also removed from the other user's friend list. Defaults to `false`.
+</ParamField>
+
+**Response** — `null` on success, or an error object `{ valid: false, message: string }` if the user is not a friend.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/delete_friend \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{"user_id": 10001}'
+```
+
+```json Response (success)
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+```json Response (not a friend)
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "valid": false,
+    "message": "不是好友"
+  }
+}
+```
+</CodeGroup>

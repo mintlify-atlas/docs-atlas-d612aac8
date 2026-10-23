@@ -1,0 +1,159 @@
+{
+  "projectType": "framework",
+  "projectName": "NapCat",
+  "projectDescription": "A modern QQ bot framework implementing the OneBot 11 protocol on top of NTQQ, with HTTP/WebSocket network adapters, a built-in WebUI, and an extensive extended API surface.",
+  "theme": "luma",
+  "primaryColor": "#5468ff",
+  "lightColor": null,
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guide",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "guide/introduction",
+              "guide/quickstart",
+              "guide/installation"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "guide/napcat-config",
+              "guide/network-config",
+              "guide/webui"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "guide/shell-mode",
+              "guide/framework-mode",
+              "guide/docker"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "guide/plugin-system",
+              "guide/packet-backend",
+              "guide/faq"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/response-format"
+            ]
+          },
+          {
+            "group": "Messages",
+            "pages": [
+              "api/messages/send",
+              "api/messages/receive",
+              "api/messages/types"
+            ]
+          },
+          {
+            "group": "Groups & Friends",
+            "pages": [
+              "api/groups",
+              "api/friends"
+            ]
+          },
+          {
+            "group": "Extended Actions",
+            "pages": [
+              "api/extended/user",
+              "api/extended/group",
+              "api/extended/file",
+              "api/extended/media"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api/events/message-events",
+              "api/events/notice-events",
+              "api/events/request-events"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Full OneBot 11 standard implementation over NTQQ",
+    "Multiple network transport modes: HTTP server, HTTP client (webhook), WebSocket server, WebSocket client, SSE",
+    "Built-in WebUI for login management and runtime configuration",
+    "Rich extended API beyond OneBot 11 standard (emoji reactions, AI voice, QQ Zone, group albums, file flash-transfer, etc.)",
+    "Plugin system with auto-registration for custom actions",
+    "TypeScript monorepo with napcat-core, napcat-onebot, napcat-protocol, napcat-framework, napcat-shell packages",
+    "Cross-platform: Windows, Linux, macOS; Docker image available",
+    "Packet-level backend for low-level QQ protocol access (nc_get_packet_status, send_packet)"
+  ],
+  "publicApiSurface": [
+    "send_private_msg",
+    "send_group_msg",
+    "send_msg",
+    "delete_msg",
+    "get_msg",
+    "get_forward_msg",
+    "send_like",
+    "set_group_kick",
+    "set_group_ban",
+    "set_group_whole_ban",
+    "set_group_admin",
+    "set_group_card",
+    "set_group_name",
+    "set_group_leave",
+    "set_group_special_title",
+    "set_friend_add_request",
+    "set_group_add_request",
+    "get_login_info",
+    "get_stranger_info",
+    "get_friend_list",
+    "get_group_info",
+    "get_group_list",
+    "get_group_member_info",
+    "get_group_member_list",
+    "get_group_honor_info",
+    "get_status",
+    "get_version_info",
+    "set_restart",
+    "clean_cache",
+    "send_group_forward_msg",
+    "send_private_forward_msg",
+    "upload_group_file",
+    "download_file",
+    "get_file",
+    "set_msg_emoji_like",
+    "set_online_status",
+    "set_qq_avatar",
+    "fetch_custom_face",
+    "get_profile_like",
+    "get_group_info_ex",
+    "nc_get_packet_status",
+    "send_packet",
+    "get_ai_characters",
+    "get_ai_record",
+    "send_group_ai_record",
+    "upload_file_stream",
+    "download_file_stream",
+    "create_flash_task",
+    "send_qzone_msg",
+    "get_group_album_media_list",
+    "OB11NetworkManager.registerAdapter",
+    "OneBotAction._handle",
+    "NapCatAdapterManager"
+  ]
+}

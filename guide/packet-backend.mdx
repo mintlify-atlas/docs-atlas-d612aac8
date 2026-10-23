@@ -1,0 +1,273 @@
+---
+title: "Access low-level QQ packets with the packet backend"
+sidebarTitle: "Packet Backend"
+description: "Configure and use NapCat's native packet backend to unlock poke, rkey, group to-do, and raw OIDB/Trpc packet actions."
+---
+
+NapCat can hook directly into NTQQ's native packet layer to expose QQ protocol features that the standard NTQQ JavaScript API does not surface. This native integration — called the **packet backend** — is what powers actions such as `send_poke`, `get_rkey`, group to-do management, and raw packet sending. This page explains how the packet backend works, how to configure it, how to verify it is active, and what you can do with it.
+
+## What is the packet backend?
+
+When NapCat starts, `NTQQPacketApi.initApi()` attempts to attach a native packet client to the running NTQQ process. It does this by looking up per-version memory offsets from an internal offset table (keyed by `<qqVersion>-<arch>`, e.g. `9.9.15-x64`), then initializing a `PacketClientSession` that hooks the send and receive paths at the native level.
+
+If the offset entry exists and the native client connects successfully, the packet backend is marked available and a test `FetchRkey` call is made to confirm end-to-end functionality. On success, `packetStatus` is set to `true` and all packet-dependent actions become callable.
+
+<Note>
+The packet backend only works on QQ versions whose offsets are listed in NapCat's bundled `napi2native.json`. If your QQ version is not listed, the backend will not load. Check the [NapCat releases page](https://github.com/NapNeko/NapCatQQ/releases) for the supported version for each NapCat release.
+</Note>
+
+## Configuration
+
+The `packetBackend` key in `napcat.json` controls how NapCat initialises the packet layer:
+
+```json
+{
+  "packetBackend": "auto"
+}
+```
+
+| Value | Behaviour |
+|---|---|
+| `"auto"` | (Default) NapCat tries to load the native packet backend. If the current QQ version is not in the offset table, or if the native client fails to connect, NapCat starts normally without packet features. |
+| `"native"` | Force-enables the native packet backend. Start-up will log an error if initialisation fails but NapCat will still launch. |
+| `"disable"` | Completely skips the packet backend. All packet-dependent actions return an error immediately. |
+
+<Tip>
+Leave `packetBackend` at `"auto"` unless you have a specific reason to force one mode. Auto mode gives you packet features when available and falls back gracefully when they are not.
+</Tip>
+
+### Disabling via environment variable
+
+You can also disable the native bypass at the OS level without modifying `napcat.json`:
+
+```bash
+NAPCAT_DISABLE_BYPASS=1 napcat
+```
+
+This is useful in CI environments or container images where you want to ensure no native patching occurs regardless of config.
+
+## Checking packet backend status
+
+Before calling any packet-dependent action, confirm the backend is active by calling `nc_get_packet_status`:
+
+<Tabs>
+  <Tab title="HTTP POST">
+    ```bash
+    curl -X POST http://localhost:6099/nc_get_packet_status \
+      -H "Authorization: Bearer <token>" \
+      -H "Content-Type: application/json" \
+      -d '{}'
+    ```
+  </Tab>
+  <Tab title="WebSocket">
+    ```json
+    {
+      "action": "nc_get_packet_status",
+      "params": {},
+      "echo": "check-packet"
+    }
+    ```
+  </Tab>
+</Tabs>
+
+A successful response indicates the backend initialised, passed the self-test `FetchRkey` call, and is ready:
+
+```json
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null,
+  "message": "",
+  "wording": ""
+}
+```
+
+If the backend is not active, the response will be:
+
+```json
+{
+  "status": "failed",
+  "retcode": 1400,
+  "data": null,
+  "message": "packetBackend不可用，请参照文档 https://napneko.github.io/config/advanced 和启动日志检查packetBackend状态或进行配置！"
+}
+```
+
+<Note>
+Every packet-dependent action runs the same availability check internally via `GetPacketStatusDepends`. You do not need to call `nc_get_packet_status` before every request — it is most useful for diagnostics and health checks.
+</Note>
+
+## Packet-dependent actions
+
+The following actions are only available when the packet backend is active. Each one extends either `GetPacketStatusDepends` (requires `packetStatus === true`) or `PacketSendAvailableDepends` (additionally requires the send path to be online).
+
+<CardGroup cols={2}>
+  <Card title="send_poke" icon="hand-pointer">
+    Send a poke (nudge) to a user in a private chat or group. Requires the send-available backend.
+  </Card>
+  <Card title="friend_poke / group_poke" icon="hand-pointer">
+    Aliases for `send_poke` that follow the friend/group naming convention used elsewhere in OneBot.
+  </Card>
+  <Card title="get_rkey" icon="key">
+    Fetch private and group resource keys (rkeys) needed to download QQ media files. Results are served from an internal cache.
+  </Card>
+  <Card title="get_rkey_server" icon="server">
+    Fetch rkeys from the QQ rkey server with TTL-aware caching. Returns `private_rkey`, `group_rkey`, and `expired_time`.
+  </Card>
+  <Card title="set_group_todo" icon="list-check">
+    Pin a message as a group to-do item.
+  </Card>
+  <Card title="complete_group_todo" icon="circle-check">
+    Mark a group to-do item as completed.
+  </Card>
+  <Card title="cancel_group_todo" icon="circle-xmark">
+    Cancel (delete) a group to-do item.
+  </Card>
+  <Card title="send_packet" icon="code">
+    Send a raw OIDB or Trpc packet to the QQ server. For advanced use only.
+  </Card>
+</CardGroup>
+
+## `send_poke` — Poke a user
+
+`send_poke` (and its aliases `friend_poke` / `group_poke`) sends the QQ "nudge" animation to a target user.
+
+**Payload:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `user_id` | `string` | ✅ | The QQ number of the target user |
+| `group_id` | `string` | ❌ | Group ID — if present, sends a group poke |
+| `target_id` | `string` | ❌ | Override target QQ number; defaults to `user_id` |
+
+```bash
+# Poke a friend
+curl -X POST http://localhost:6099/send_poke \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "user_id": "123456789" }'
+
+# Poke someone in a group
+curl -X POST http://localhost:6099/send_poke \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "user_id": "123456789", "group_id": "987654321" }'
+```
+
+## `get_rkey` — Fetch resource keys
+
+Rkeys are short-lived tokens required to construct download URLs for QQ images, voice files, and other media. Call `get_rkey` to refresh them:
+
+```bash
+curl -X POST http://localhost:6099/get_rkey \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+```json
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    {
+      "type": "private",
+      "rkey": "&rkey=AQAA...",
+      "created_at": 1734567890,
+      "ttl": 3600
+    },
+    {
+      "type": "group",
+      "rkey": "&rkey=BQBB...",
+      "created_at": 1734567890,
+      "ttl": 3600
+    }
+  ]
+}
+```
+
+## Group to-do actions
+
+Group to-dos let you pin actionable items in a QQ group. All three actions share a common payload shape:
+
+**Payload:**
+
+| Field | Type | Description |
+|---|---|---|
+| `group_id` | `string` | Target group ID |
+| `msg_seq` | `string` | Message sequence number of the message to pin as a to-do |
+
+```bash
+# Create a to-do from message seq 12345 in group 987654321
+curl -X POST http://localhost:6099/set_group_todo \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "group_id": "987654321", "msg_seq": "12345" }'
+
+# Mark it complete
+curl -X POST http://localhost:6099/complete_group_todo \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "group_id": "987654321", "msg_seq": "12345" }'
+
+# Cancel it
+curl -X POST http://localhost:6099/cancel_group_todo \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "group_id": "987654321", "msg_seq": "12345" }'
+```
+
+## `send_packet` — Raw packet sending
+
+<Warning>
+`send_packet` sends raw binary data directly to the Tencent QQ servers at the protocol level. It bypasses all of NapCat's safety checks and abstractions. Incorrect usage can result in account restrictions or bans. This action is intended for **advanced developers** researching the QQ protocol and is subject to breaking changes without notice.
+</Warning>
+
+`send_packet` lets you send arbitrary OIDB or Trpc commands with hex-encoded protobuf payloads.
+
+**Payload:**
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `cmd` | `string` | ✅ | The command string, e.g. `OidbSvcTrpcTcp.0x9a9_0` |
+| `data` | `string` | ✅ | Hex-encoded binary payload (raw protobuf bytes) |
+| `rsp` | `string \| boolean` | ❌ | Whether to wait for a response; defaults to `true` |
+
+**Return value:** Hex-encoded response bytes (`string`), or `undefined` if `rsp` was `false`.
+
+```bash
+curl -X POST http://localhost:6099/send_packet \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cmd": "Example.Cmd",
+    "data": "0a03666f6f",
+    "rsp": true
+  }'
+```
+
+```json
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": "0a03626172"
+}
+```
+
+## Troubleshooting
+
+<Accordion title="Packet backend fails to load on startup">
+Check the NapCat startup log for a line containing `[Core] [Packet]`. Common messages:
+
+- **`PacketBackend 不支持当前QQ版本架构`** — Your QQ version + CPU architecture combination is not in the offset table. Upgrade or downgrade NTQQ to a supported version (check the [releases page](https://github.com/NapNeko/NapCatQQ/releases)).
+- **`NativePacketClient 初始化失败`** — The native client loaded but failed to hook the process. Try restarting NapCat; if it persists, file a bug report with your NTQQ version and OS details.
+- **`已禁用PacketBackend`** — `packetBackend` is set to `"disable"` in your config. Change it to `"auto"` or `"native"`.
+</Accordion>
+
+<Accordion title="send_poke returns an error even with packet backend active">
+`send_poke` uses `PacketSendAvailableDepends`, which requires not just `packetStatus === true` but also that the native send path (`pkt.available`) is online. Call `nc_get_packet_status` and inspect the error stack in the response message. If `pkt.available` is `false`, the receive path initialised correctly but the send hook failed — usually an offset mismatch for a patch-level QQ update.
+</Accordion>
+
+<Accordion title="get_rkey returns stale or expired tokens">
+`get_rkey_server` caches its result until the minimum TTL of the returned keys expires. If you need fresh keys immediately, call `get_rkey` (`get_rkey_ex`) instead — it fetches directly from the packet layer without a cache layer.
+</Accordion>

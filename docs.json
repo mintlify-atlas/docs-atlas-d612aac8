@@ -1,72 +1,105 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mintlify Starter Kit",
+  "name": "NapCat",
+  "theme": "luma",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#5468ff"
   },
-  "favicon": "/favicon.svg",
-  "navigation": {
-    "pages": [
-      {
-        "group": "Getting Started",
-        "pages": [
-          "index",
-          "quickstart"
-        ]
-      }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
+  "favicon": "https://icons.duckduckgo.com/ip3/napneko.github.io.ico",
   "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:support@mintlify.com"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://app.mintlify.com"
+      "type": "github",
+      "href": "https://github.com/NapNeko/NapCatQQ"
     }
-  },
-  "contextual": {
-    "options": [
-      "copy",
-      "view",
-      "chatgpt",
-      "claude",
-      "perplexity",
-      "mcp",
-      "cursor",
-      "vscode"
-    ]
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
+      "github": "https://github.com/NapNeko/NapCatQQ"
     }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Guide",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "guide/introduction",
+              "guide/quickstart",
+              "guide/installation"
+            ]
+          },
+          {
+            "group": "Configuration",
+            "pages": [
+              "guide/napcat-config",
+              "guide/network-config",
+              "guide/webui"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "guide/shell-mode",
+              "guide/framework-mode",
+              "guide/docker"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "guide/plugin-system",
+              "guide/packet-backend",
+              "guide/faq"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/response-format"
+            ]
+          },
+          {
+            "group": "Messages",
+            "pages": [
+              "api/messages/send",
+              "api/messages/receive",
+              "api/messages/types"
+            ]
+          },
+          {
+            "group": "Groups & Friends",
+            "pages": [
+              "api/groups",
+              "api/friends"
+            ]
+          },
+          {
+            "group": "Extended Actions",
+            "pages": [
+              "api/extended/user",
+              "api/extended/group",
+              "api/extended/file",
+              "api/extended/media"
+            ]
+          },
+          {
+            "group": "Events",
+            "pages": [
+              "api/events/message-events",
+              "api/events/notice-events",
+              "api/events/request-events"
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

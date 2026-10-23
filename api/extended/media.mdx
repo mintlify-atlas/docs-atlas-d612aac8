@@ -1,0 +1,1083 @@
+---
+title: "AI voice, OCR, custom faces, and emoji reactions in NapCat"
+sidebarTitle: "Media Actions"
+description: "NapCat's media-extended API for OCR text recognition, emoji reactions, custom face stickers, group album management, mini-app cards, and inline keyboard buttons."
+---
+
+NapCat adds a rich set of media-related actions on top of the core OneBot 11 standard. These let your bot read text from images via OCR, react to messages with QQ emojis, manage the account's saved custom face stickers, browse and interact with group photo albums, generate mini-app share cards, and click inline keyboard buttons inside bot messages. All actions on this page are NapCat-specific extensions.
+
+<Tip>
+  Emoji IDs used in `set_msg_emoji_like`, `fetch_emoji_like`, and
+  `get_emoji_likes` correspond to QQ's internal face ID list. Standard emoji
+  IDs are short integers (e.g. `"76"` for 🐱), while custom sticker IDs are
+  longer strings. You can find a comprehensive list in NapCat's bundled
+  `face_config.json` or community-maintained emoji ID sheets.
+</Tip>
+
+---
+
+## `ocr_image` / `.ocr_image`
+
+Performs optical character recognition (OCR) on an image and returns the detected text blocks. Both `ocr_image` and `.ocr_image` (prefixed with a dot) map to the same implementation.
+
+<Note>
+  OCR recognition is only available on the **Windows** build of NTQQ. Calling
+  this action on Linux or macOS NapCat instances will fail.
+</Note>
+
+### Parameters
+
+<ParamField body="image" type="string" required>
+  Image source. Accepts a local `file://` path, an `https://` URL (downloaded
+  automatically), or a `base64://` data URI.
+</ParamField>
+
+### Response
+
+Returns the raw OCR result from the NTQQ engine. The typical shape is:
+
+<ResponseField name="texts" type="array">
+  Array of detected text regions. Each entry contains:
+  <Expandable title="text region fields">
+    <ResponseField name="text" type="string">
+      The recognised text content of this region.
+    </ResponseField>
+    <ResponseField name="confidence" type="number">
+      Recognition confidence score.
+    </ResponseField>
+    <ResponseField name="coordinates" type="array">
+      Bounding-box corner coordinates as `[x, y]` pairs.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="language" type="string">
+  Detected language code (e.g. `"zh"`, `"en"`).
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "ocr_image",
+  "params": {
+    "image": "https://example.com/sign.png"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "texts": [
+      {
+        "text": "NapCat",
+        "confidence": 0.99,
+        "coordinates": [[10, 5], [80, 5], [80, 25], [10, 25]]
+      }
+    ],
+    "language": "en"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_msg_emoji_like`
+
+Adds or removes an emoji reaction on a message. This is equivalent to long-pressing a message in the QQ client and selecting an emoji reaction.
+
+### Parameters
+
+<ParamField body="message_id" type="number | string" required>
+  The short message ID of the message to react to.
+</ParamField>
+
+<ParamField body="emoji_id" type="number | string" required>
+  The emoji ID to react with. See the tip at the top of this page for how to
+  find emoji IDs.
+</ParamField>
+
+<ParamField body="set" type="boolean | string">
+  `true` to add the reaction (default), `false` to remove it.
+</ParamField>
+
+### Response
+
+Returns the raw result from the NTQQ emoji-like API.
+
+### Example
+
+<CodeGroup>
+
+```json Request (add reaction)
+{
+  "action": "set_msg_emoji_like",
+  "params": {
+    "message_id": 987654321,
+    "emoji_id": "76",
+    "set": true
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": true }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `fetch_emoji_like`
+
+Retrieves the paginated list of users who reacted to a specific message with a specific emoji. Use the returned `cookie` to fetch the next page.
+
+### Parameters
+
+<ParamField body="message_id" type="number | string" required>
+  The short message ID of the target message.
+</ParamField>
+
+<ParamField body="emojiId" type="number | string" required>
+  The emoji ID to query reactions for.
+</ParamField>
+
+<ParamField body="emojiType" type="number | string" required>
+  The emoji type. Standard QQ emojis use `1`; custom stickers use `2`.
+</ParamField>
+
+<ParamField body="count" type="number | string">
+  Maximum number of results per page. Defaults to `20`.
+</ParamField>
+
+<ParamField body="cookie" type="string">
+  Pagination cursor from a previous response. Pass an empty string for the
+  first page.
+</ParamField>
+
+### Response
+
+<ResponseField name="emojiLikesList" type="array">
+  Array of reaction entries:
+  <Expandable title="reaction entry fields">
+    <ResponseField name="tinyId" type="string">
+      The reactor's internal tiny ID.
+    </ResponseField>
+    <ResponseField name="nickName" type="string">
+      The reactor's nickname.
+    </ResponseField>
+    <ResponseField name="headUrl" type="string">
+      URL of the reactor's avatar.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="cookie" type="string">
+  Pagination cursor to pass in the next call. Empty when no more pages exist.
+</ResponseField>
+
+<ResponseField name="isLastPage" type="boolean">
+  `true` when this is the final page of results.
+</ResponseField>
+
+<ResponseField name="isFirstPage" type="boolean">
+  `true` when this is the first page of results.
+</ResponseField>
+
+<ResponseField name="result" type="number">
+  API result status code (`0` = success).
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "fetch_emoji_like",
+  "params": {
+    "message_id": 987654321,
+    "emojiId": "76",
+    "emojiType": 1,
+    "count": 10,
+    "cookie": ""
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "emojiLikesList": [
+      {
+        "tinyId": "123456789",
+        "nickName": "Alice",
+        "headUrl": "https://thirdqq.qlogo.cn/..."
+      }
+    ],
+    "cookie": "",
+    "isLastPage": true,
+    "isFirstPage": true,
+    "result": 0,
+    "errMsg": ""
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_emoji_likes`
+
+An alternative emoji-reaction query that automatically paginates through all pages and returns a flat list. Unlike `fetch_emoji_like`, this action resolves user QQ numbers instead of tiny IDs.
+
+### Parameters
+
+<ParamField body="message_id" type="string" required>
+  The message ID (short or long format). When using a long ID, `group_id` must
+  also be supplied.
+</ParamField>
+
+<ParamField body="emoji_id" type="string" required>
+  The emoji ID to query.
+</ParamField>
+
+<ParamField body="emoji_type" type="string">
+  The emoji type (`"1"` for standard, `"2"` for custom). When omitted, NapCat
+  auto-detects based on ID length.
+</ParamField>
+
+<ParamField body="count" type="number">
+  Maximum total results to return across all pages. Set to `0` for all
+  available results (up to 200 per call cycle). Defaults to `0`.
+</ParamField>
+
+<ParamField body="group_id" type="string">
+  Required when `message_id` is a long (non-short) ID.
+</ParamField>
+
+### Response
+
+<ResponseField name="emoji_like_list" type="array">
+  Flat array of reactor entries:
+  <Expandable title="reactor entry fields">
+    <ResponseField name="user_id" type="string">
+      The reactor's QQ number (as a string).
+    </ResponseField>
+    <ResponseField name="nick_name" type="string">
+      The reactor's nickname.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_emoji_likes",
+  "params": {
+    "message_id": "987654321",
+    "emoji_id": "76",
+    "count": 0
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "emoji_like_list": [
+      { "user_id": "100000001", "nick_name": "Alice" },
+      { "user_id": "100000002", "nick_name": "Bob" }
+    ]
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `fetch_custom_face`
+
+Returns the URLs of the bot account's saved custom emoji stickers (favourite faces). These are the stickers the user has collected and can send in chats.
+
+### Parameters
+
+<ParamField body="count" type="number | string">
+  Maximum number of sticker URLs to return. Defaults to `48`.
+</ParamField>
+
+### Response
+
+Returns an array of CDN URL strings, each pointing to a custom face image.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "fetch_custom_face",
+  "params": {
+    "count": 10
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    "https://p.qpic.cn/...sticker1.png",
+    "https://p.qpic.cn/...sticker2.gif"
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+## `fetch_custom_face_detail`
+
+Returns the full metadata objects for the bot's saved custom faces, including `resId`, `md5`, dimensions, and description fields needed for `delete_custom_face` and `set_custom_face_desc`.
+
+### Parameters
+
+<ParamField body="count" type="number | string">
+  Maximum number of entries to return. Defaults to `48`.
+</ParamField>
+
+### Response
+
+Returns the raw `emojiInfoList` array from NTQQ's favourite emoji API. Each entry contains at minimum:
+
+- `resId` — the primary identifier used in delete/update operations
+- `md5` — file hash
+- `url` — CDN URL
+- `desc` — current description text
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "fetch_custom_face_detail",
+  "params": {
+    "count": 5
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    {
+      "resId": "2707600964_0_0_0_D8EAA70984B402EE10B0F33DB88F4173_0_0",
+      "md5": "d8eaa70984b402ee10b0f33db88f4173",
+      "url": "https://p.qpic.cn/...",
+      "desc": "My favourite cat"
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+## `add_custom_face`
+
+Adds a local image file to the bot account's custom face (favourite sticker) collection.
+
+### Parameters
+
+<ParamField body="file" type="string" required>
+  Absolute local path to the image file on the NapCat host machine. Remote
+  URLs are not supported here — download first using `download_file` if needed.
+</ParamField>
+
+<ParamField body="emoji_id" type="string | number">
+  An existing emoji ID to associate with this face. Pass an empty string if
+  not applicable.
+</ParamField>
+
+<ParamField body="package_id" type="string | number">
+  Sticker package ID. Defaults to `0`.
+</ParamField>
+
+<ParamField body="file_name" type="string">
+  Display name. Defaults to the basename of the `file` path.
+</ParamField>
+
+<ParamField body="file_size" type="string | number">
+  File size in bytes. NapCat reads it from disk when omitted.
+</ParamField>
+
+<ParamField body="md5" type="string">
+  MD5 hash of the file. NapCat computes it from disk when omitted.
+</ParamField>
+
+<ParamField body="is_mark_face" type="boolean">
+  Whether this is a paid store emoji. Defaults to `false`.
+</ParamField>
+
+<ParamField body="is_origin" type="boolean">
+  Whether to store the original (non-compressed) image. Defaults to `true`.
+</ParamField>
+
+### Response
+
+Returns the raw result from NTQQ's add-favourite-emoji API.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "add_custom_face",
+  "params": {
+    "file": "/home/bot/stickers/cat.png",
+    "is_origin": true
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": 0 }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `delete_custom_face`
+
+Removes one or more custom faces from the bot account's sticker collection. You must supply the `res_id` (from `fetch_custom_face_detail`) — MD5 alone is not sufficient to delete a face.
+
+### Parameters
+
+<ParamField body="res_id" type="string | string[]">
+  The `resId` string (or array of strings) of the faces to delete. This is the
+  primary identifier returned by `fetch_custom_face_detail`.
+</ParamField>
+
+<ParamField body="id" type="string | string[]">
+  Alias for `res_id`. Accepts a single string or an array.
+</ParamField>
+
+<ParamField body="ids" type="string[]">
+  Alternative array form. If all three fields are provided, `ids` takes
+  precedence, then `res_id`, then `id`.
+</ParamField>
+
+### Response
+
+Returns the raw deletion result from the NTQQ API.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "delete_custom_face",
+  "params": {
+    "res_id": "2707600964_0_0_0_D8EAA70984B402EE10B0F33DB88F4173_0_0"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": 0 }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_custom_face_desc`
+
+Updates the text description associated with a saved custom face sticker.
+
+### Parameters
+
+<ParamField body="emoji_id" type="number | string" required>
+  The numeric emoji ID of the face to update.
+</ParamField>
+
+<ParamField body="res_id" type="string" required>
+  The resource ID of the face (from `fetch_custom_face_detail`).
+</ParamField>
+
+<ParamField body="md5" type="string" required>
+  The MD5 hash of the face image (from `fetch_custom_face_detail`).
+</ParamField>
+
+<ParamField body="desc" type="string" required>
+  The new description text.
+</ParamField>
+
+### Response
+
+Returns the raw result from NTQQ's modify-favourite-emoji API.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_custom_face_desc",
+  "params": {
+    "emoji_id": 1,
+    "res_id": "2707600964_0_0_0_D8EAA70984B402EE10B0F33DB88F4173_0_0",
+    "md5": "d8eaa70984b402ee10b0f33db88f4173",
+    "desc": "Happy cat sticker"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": 0 }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_album_media_list`
+
+Lists the photos in a specific group album. Supports cursor-based pagination through `attach_info`.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="album_id" type="string" required>
+  The album ID (from `get_qun_album_list`).
+</ParamField>
+
+<ParamField body="attach_info" type="string">
+  Pagination cursor from the previous response. Pass an empty string or omit
+  for the first page.
+</ParamField>
+
+### Response
+
+Returns a raw object from the NapCat web API. The `media_list` array in the response contains individual media items, each including a `lloc` (media ID used in delete/like/comment calls), a CDN URL, upload timestamps, and uploader info.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_album_media_list",
+  "params": {
+    "group_id": "123456789",
+    "album_id": "album_abc123"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "media_list": [
+      {
+        "lloc": "aabbccddeeff112233",
+        "url": "https://pic.example.com/photo1.jpg",
+        "upload_time": 1734567890
+      }
+    ],
+    "attach_info": "",
+    "has_more": false
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `del_group_album_media`
+
+Permanently removes a photo from a group album using its `lloc` identifier.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="album_id" type="string" required>
+  The album ID containing the media item.
+</ParamField>
+
+<ParamField body="lloc" type="string" required>
+  The media identifier (`lloc`) from `get_group_album_media_list`.
+</ParamField>
+
+### Response
+
+Returns the raw deletion result from the web API.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "del_group_album_media",
+  "params": {
+    "group_id": "123456789",
+    "album_id": "album_abc123",
+    "lloc": "aabbccddeeff112233"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": {} }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_album_media_like`
+
+Likes or unlikes a media item (or a whole upload batch) in a group album. To like a single photo, supply `lloc`. To like an entire upload batch, supply only `batch_id` and omit `lloc`.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="album_id" type="string" required>
+  The album ID containing the media.
+</ParamField>
+
+<ParamField body="batch_id" type="string" required>
+  The upload batch ID. Available from `get_group_album_media_list` as
+  `batch.link_id` or `media[].batch_id`.
+</ParamField>
+
+<ParamField body="lloc" type="string">
+  Individual photo identifier. When provided, only that photo is liked. When
+  omitted, the entire batch receives the like.
+</ParamField>
+
+### Response
+
+Returns the raw result from the web API like operation.
+
+### Example
+
+<CodeGroup>
+
+```json Request (like a single photo)
+{
+  "action": "set_group_album_media_like",
+  "params": {
+    "group_id": "123456789",
+    "album_id": "album_abc123",
+    "batch_id": "112233",
+    "lloc": "aabbccddeeff112233"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": {} }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `do_group_album_comment`
+
+Posts a text comment on a group album photo or on an entire upload batch. At least one of `lloc` or `batch_id` must be provided.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="album_id" type="string" required>
+  The album ID.
+</ParamField>
+
+<ParamField body="content" type="string" required>
+  The comment text.
+</ParamField>
+
+<ParamField body="lloc" type="string">
+  When provided, the comment targets the specific photo with this `lloc` ID.
+</ParamField>
+
+<ParamField body="batch_id" type="string">
+  When only `batch_id` is given (no `lloc`), the comment targets the whole
+  upload batch. Required when `lloc` is omitted.
+</ParamField>
+
+### Response
+
+Returns the raw result from the web API comment operation.
+
+### Example
+
+<CodeGroup>
+
+```json Request (comment on a photo)
+{
+  "action": "do_group_album_comment",
+  "params": {
+    "group_id": "123456789",
+    "album_id": "album_abc123",
+    "lloc": "aabbccddeeff112233",
+    "content": "Beautiful shot! 📸"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": {} }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `upload_image_to_qun_album`
+
+Uploads a local or remote image into a specific group album. NapCat downloads remote URLs to a temp file before uploading and cleans up automatically.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The target group number.
+</ParamField>
+
+<ParamField body="album_id" type="string" required>
+  The target album ID.
+</ParamField>
+
+<ParamField body="album_name" type="string" required>
+  The display name of the album (required by the upload API even when the
+  album already exists).
+</ParamField>
+
+<ParamField body="file" type="string" required>
+  Image source: a `file://` path, `https://` URL, or `base64://` data URI.
+</ParamField>
+
+### Response
+
+Returns the raw upload result from the NapCat web API.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "upload_image_to_qun_album",
+  "params": {
+    "group_id": "123456789",
+    "album_id": "album_abc123",
+    "album_name": "Event Photos",
+    "file": "https://example.com/event.jpg"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": null }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_qun_album_list`
+
+Returns a paginated list of all photo albums belonging to a group.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="attach_info" type="string">
+  Pagination cursor from the previous response. Omit or pass an empty string
+  for the first page.
+</ParamField>
+
+### Response
+
+<ResponseField name="album_list" type="array">
+  Array of album objects. Each typically contains `album_id`, `album_name`,
+  `cover_url`, `create_time`, and `photo_count`.
+</ResponseField>
+
+<ResponseField name="attach_info" type="string">
+  Pagination cursor to use in the next call.
+</ResponseField>
+
+<ResponseField name="has_more" type="boolean">
+  `true` when additional pages of albums are available.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_qun_album_list",
+  "params": {
+    "group_id": "123456789"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "album_list": [
+      {
+        "album_id": "album_abc123",
+        "album_name": "Event Photos",
+        "cover_url": "https://pic.example.com/cover.jpg",
+        "create_time": 1734567890
+      }
+    ],
+    "attach_info": "",
+    "has_more": false
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_mini_app_ark`
+
+Generates a QQ mini-app ARK card JSON string that can be embedded into a message. ARK cards render as rich interactive cards in the QQ client, showing a title, description, image, and a tappable link. Requires the NapCat packet backend.
+
+There are two usage modes:
+
+- **Template mode** — pass `type: "bili"` or `type: "weibo"` to use a preset template. Only `title`, `desc`, `picUrl`, and `jumpUrl` are needed.
+- **Custom mode** — omit `type` and supply all card parameters manually (useful for other mini-app integrations).
+
+### Parameters (template mode)
+
+<ParamField body="type" type="string" required>
+  Template name. Currently supported: `"bili"` (Bilibili) or `"weibo"` (Weibo).
+</ParamField>
+
+<ParamField body="title" type="string" required>
+  Card title text.
+</ParamField>
+
+<ParamField body="desc" type="string" required>
+  Card description / subtitle text.
+</ParamField>
+
+<ParamField body="picUrl" type="string" required>
+  URL of the thumbnail image shown on the card.
+</ParamField>
+
+<ParamField body="jumpUrl" type="string" required>
+  The URL or deep link to open when the card is tapped.
+</ParamField>
+
+<ParamField body="webUrl" type="string">
+  Fallback web URL. Defaults to an empty string.
+</ParamField>
+
+<ParamField body="rawArkData" type="string">
+  Set to `"true"` to receive the raw ARK data object instead of the
+  send-ready JSON string.
+</ParamField>
+
+### Parameters (custom mode)
+
+<Expandable title="Custom mode parameters">
+  <ParamField body="title" type="string" required>Card title.</ParamField>
+  <ParamField body="desc" type="string" required>Card description.</ParamField>
+  <ParamField body="picUrl" type="string" required>Thumbnail image URL.</ParamField>
+  <ParamField body="jumpUrl" type="string" required>Tap destination URL.</ParamField>
+  <ParamField body="iconUrl" type="string" required>Mini-app icon URL.</ParamField>
+  <ParamField body="appId" type="string" required>Mini-app AppID.</ParamField>
+  <ParamField body="scene" type="string" required>Scene ID string.</ParamField>
+  <ParamField body="templateType" type="string" required>Template type code.</ParamField>
+  <ParamField body="businessType" type="string" required>Business type code.</ParamField>
+  <ParamField body="verType" type="string" required>Version type code.</ParamField>
+  <ParamField body="shareType" type="string" required>Share type code.</ParamField>
+  <ParamField body="versionId" type="string" required>Version ID string.</ParamField>
+  <ParamField body="sdkId" type="string">SDK ID. Uses the NapCat default when omitted.</ParamField>
+  <ParamField body="withShareTicket" type="string" required>Whether to include a share ticket (`"0"` or `"1"`).</ParamField>
+</Expandable>
+
+### Response
+
+<ResponseField name="data" type="any">
+  The ARK card data. By default this is the send-ready JSON string to embed in
+  an ARK message element. When `rawArkData` is `"true"`, the raw protocol
+  object is returned instead.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request (Bilibili template)
+{
+  "action": "get_mini_app_ark",
+  "params": {
+    "type": "bili",
+    "title": "NapCat Introduction",
+    "desc": "A modern QQ bot framework",
+    "picUrl": "https://example.com/thumb.jpg",
+    "jumpUrl": "https://www.bilibili.com/video/BV1234567890"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "data": "{\"app\":\"com.tencent.miniapp_01\",\"view\":\"...\",\"...\":\"...\"}"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `click_inline_keyboard_button`
+
+Programmatically clicks a button in an inline keyboard card within a group message. This simulates the action a user would take by tapping the button in the QQ client.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number containing the message with the inline keyboard.
+</ParamField>
+
+<ParamField body="bot_appid" type="string" required>
+  The AppID of the bot that sent the keyboard card.
+</ParamField>
+
+<ParamField body="button_id" type="string">
+  The ID of the specific button to click. Defaults to an empty string.
+</ParamField>
+
+<ParamField body="callback_data" type="string">
+  The callback data payload associated with the button. Defaults to an empty
+  string.
+</ParamField>
+
+<ParamField body="msg_seq" type="string">
+  The message sequence number of the keyboard message. Defaults to `"10086"`.
+</ParamField>
+
+### Response
+
+Returns the raw result from NTQQ's inline keyboard click API.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "click_inline_keyboard_button",
+  "params": {
+    "group_id": "123456789",
+    "bot_appid": "1234567890",
+    "button_id": "btn_confirm",
+    "callback_data": "{\"action\":\"approve\"}",
+    "msg_seq": "55566677"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {}
+}
+```
+
+</CodeGroup>

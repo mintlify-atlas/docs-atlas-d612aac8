@@ -1,0 +1,615 @@
+---
+title: "Group management API: query, moderate, and configure groups"
+sidebarTitle: "Groups"
+description: "Complete reference for all OneBot 11 group actions in NapCat — query groups, manage members, set permissions, pin essence messages, and handle join requests."
+---
+
+NapCat exposes every OneBot 11 group management action over HTTP POST and WebSocket. Whether you need to fetch a group's member roster, mute a disruptive user, promote someone to admin, pin an important message as an essence message, or approve a pending join request, all operations follow the same request/response envelope. The actions documented here require that the bot account is already a member (or owner/admin for privileged operations) of the target group.
+
+---
+
+## Querying groups
+
+### `get_group_list`
+
+Returns every group the bot has joined. Pass `no_cache: true` to bypass NapCat's in-memory group cache and force a fresh fetch from the NTQQ layer.
+
+<ParamField body="no_cache" type="boolean" optional>
+  When `true`, skips the local cache and re-fetches the group list from the NTQQ layer. Accepts the string `"true"` / `"false"` as well. Defaults to `false`.
+</ParamField>
+
+**Response** — array of group objects.
+
+<ResponseField name="data" type="GroupInfo[]">
+  <Expandable title="GroupInfo fields">
+    <ResponseField name="group_id" type="number">
+      Numeric group ID (QQ group number).
+    </ResponseField>
+    <ResponseField name="group_name" type="string">
+      Display name of the group.
+    </ResponseField>
+    <ResponseField name="member_count" type="number">
+      Current number of members in the group.
+    </ResponseField>
+    <ResponseField name="max_member_count" type="number">
+      Maximum allowed member count for the group.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/get_group_list \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{}'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    {
+      "group_id": 123456789,
+      "group_name": "NapCat Dev",
+      "member_count": 42,
+      "max_member_count": 500
+    }
+  ]
+}
+```
+</CodeGroup>
+
+---
+
+### `get_group_info`
+
+Fetches basic information for a single group. If the group is not in the local cache, NapCat fetches its details directly from the NTQQ network layer.
+
+<ParamField body="group_id" type="number" required>
+  Numeric QQ group ID to look up.
+</ParamField>
+
+**Response** — a single `GroupInfo` object with the same fields as `get_group_list`.
+
+<ResponseField name="data" type="GroupInfo">
+  <Expandable title="GroupInfo fields">
+    <ResponseField name="group_id" type="number">
+      Numeric group ID.
+    </ResponseField>
+    <ResponseField name="group_name" type="string">
+      Display name of the group.
+    </ResponseField>
+    <ResponseField name="member_count" type="number">
+      Current number of members.
+    </ResponseField>
+    <ResponseField name="max_member_count" type="number">
+      Maximum allowed member count.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/get_group_info \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{"group_id": 123456789}'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "group_id": 123456789,
+    "group_name": "NapCat Dev",
+    "member_count": 42,
+    "max_member_count": 500
+  }
+}
+```
+</CodeGroup>
+
+---
+
+### `get_group_member_info`
+
+Retrieves detailed information for a single member. NapCat resolves the user's internal UID from their QQ number and merges cache, live member, and profile detail data into one object.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID the member belongs to.
+</ParamField>
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the member to look up.
+</ParamField>
+
+<ParamField body="no_cache" type="boolean" optional>
+  When `true`, forces a fresh fetch instead of reading from the member cache. Defaults to `true` (always fresh) to ensure accuracy.
+</ParamField>
+
+**Response** — a `GroupMember` object.
+
+<ResponseField name="data" type="GroupMember">
+  <Expandable title="GroupMember fields">
+    <ResponseField name="user_id" type="number">
+      QQ number of the member.
+    </ResponseField>
+    <ResponseField name="nickname" type="string">
+      QQ nickname of the member.
+    </ResponseField>
+    <ResponseField name="card" type="string">
+      Group card (nickname) set for this group. Empty string when not set.
+    </ResponseField>
+    <ResponseField name="sex" type="string">
+      Gender: `"male"`, `"female"`, or `"unknown"`.
+    </ResponseField>
+    <ResponseField name="age" type="number">
+      Age as reported by the user's QQ profile.
+    </ResponseField>
+    <ResponseField name="area" type="string">
+      Location area string from the user's profile.
+    </ResponseField>
+    <ResponseField name="join_time" type="number">
+      Unix timestamp when the member joined the group.
+    </ResponseField>
+    <ResponseField name="last_sent_time" type="number">
+      Unix timestamp of the member's last message in the group.
+    </ResponseField>
+    <ResponseField name="level" type="string">
+      Member level within the group.
+    </ResponseField>
+    <ResponseField name="role" type="string">
+      Role in the group: `"owner"`, `"admin"`, or `"member"`.
+    </ResponseField>
+    <ResponseField name="unfriendly" type="boolean">
+      Whether the member is flagged as unfriendly.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      Exclusive title granted to the member by the owner.
+    </ResponseField>
+    <ResponseField name="title_expire_time" type="number">
+      Unix timestamp when the title expires. `0` means it never expires.
+    </ResponseField>
+    <ResponseField name="card_changeable" type="boolean">
+      Whether the bot can change this member's group card.
+    </ResponseField>
+    <ResponseField name="shut_up_timestamp" type="number">
+      Unix timestamp until which the member is muted. `0` if not muted.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### `get_group_member_list`
+
+Returns the full member list for a group. Each element has the same shape as the response from `get_group_member_info`. Duplicate `user_id` entries are deduplicated automatically.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID whose member list to retrieve.
+</ParamField>
+
+<ParamField body="no_cache" type="boolean" optional>
+  When `true`, triggers a cache refresh before returning the list. Defaults to `false`.
+</ParamField>
+
+**Response** — `GroupMember[]` — array of member objects (same fields as `get_group_member_info`).
+
+---
+
+### `get_group_honor_info`
+
+Fetches the honor rankings for a group — talkative member (龙王), performers, legends, and more. This action uses the go-cqhttp compatible `get_group_honor_info` name and is routed through NapCat's web API layer.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID to fetch honor info for.
+</ParamField>
+
+<ParamField body="type" type="string" optional>
+  Which honor category to request. One of `"talkative"`, `"performer"`, `"legend"`, `"strong_newbie"`, `"emotion"`, or `"all"`. Defaults to `"all"` when omitted.
+</ParamField>
+
+**Response** — honor object.
+
+<ResponseField name="data" type="HonorInfo">
+  <Expandable title="HonorInfo fields">
+    <ResponseField name="group_id" type="number">
+      QQ group ID.
+    </ResponseField>
+    <ResponseField name="current_talkative" type="object">
+      Profile of the current talkative (龙王) member.
+    </ResponseField>
+    <ResponseField name="talkative_list" type="object[]">
+      Historical talkative member list.
+    </ResponseField>
+    <ResponseField name="performer_list" type="object[]">
+      群聊之火 (Performer) honor list.
+    </ResponseField>
+    <ResponseField name="legend_list" type="object[]">
+      群聊炽热 (Legend) honor list.
+    </ResponseField>
+    <ResponseField name="strong_newbie_list" type="object[]">
+      冒尖小春笋 (Strong Newbie) honor list.
+    </ResponseField>
+    <ResponseField name="emotion_list" type="object[]">
+      快乐源泉 (Emotion) honor list.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+## Member management
+
+### `set_group_kick`
+
+Removes a member from the group. Optionally blocks the kicked user from sending future join requests.
+
+<Note>
+  The bot must have admin or owner role in the group. Attempting to kick another admin requires owner-level permissions.
+</Note>
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID to kick the member from.
+</ParamField>
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the member to kick.
+</ParamField>
+
+<ParamField body="reject_add_request" type="boolean" optional>
+  When `true`, the kicked member's future join requests to this group are automatically rejected. Defaults to `false`.
+</ParamField>
+
+**Response** — `null` on success.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/set_group_kick \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "group_id": 123456789,
+    "user_id": 987654321,
+    "reject_add_request": false
+  }'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+</CodeGroup>
+
+---
+
+### `set_group_ban`
+
+Mutes a single member in a group for a specified number of seconds. Set `duration` to `0` to unban.
+
+<Note>
+  You cannot mute the group owner, and you can only mute admins if the bot itself is the owner. NapCat checks the caller's role before sending the request and throws a descriptive error if the operation is not permitted.
+</Note>
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID where the ban should be applied.
+</ParamField>
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the member to mute.
+</ParamField>
+
+<ParamField body="duration" type="number" required>
+  Mute duration in seconds. Pass `0` to lift an existing mute. Minimum effective value is `60` (1 minute).
+</ParamField>
+
+**Response** — `null` on success.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/set_group_ban \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "group_id": 123456789,
+    "user_id": 987654321,
+    "duration": 600
+  }'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+</CodeGroup>
+
+---
+
+### `set_group_whole_ban`
+
+Enables or disables the whole-group mute, preventing all non-admin members from sending messages.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID to mute or unmute.
+</ParamField>
+
+<ParamField body="enable" type="boolean" optional>
+  `true` to enable the mute, `false` to disable it. Defaults to `true` when omitted.
+</ParamField>
+
+**Response** — `null` on success.
+
+---
+
+### `set_group_card`
+
+Sets the group card (nickname) for a member. Pass an empty string to remove their custom card and revert to their QQ nickname. NapCat polls the cache up to three times to confirm the change took effect.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID in which to change the member's card.
+</ParamField>
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the member whose card should be changed.
+</ParamField>
+
+<ParamField body="card" type="string" optional>
+  New group card string. Pass an empty string (`""`) to remove the existing card.
+</ParamField>
+
+**Response** — `null` on success.
+
+---
+
+### `set_group_special_title`
+
+Grants or updates a member's exclusive title (专属头衔). Only the group owner can assign exclusive titles.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID where the title applies.
+</ParamField>
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the member to receive the title.
+</ParamField>
+
+<ParamField body="special_title" type="string" required>
+  Title text to display next to the member's name. Pass an empty string to remove the title.
+</ParamField>
+
+<ParamField body="duration" type="number" required>
+  Duration in seconds for which the title is valid. Pass `-1` for a permanent title.
+</ParamField>
+
+**Response** — `null` on success.
+
+---
+
+## Permissions
+
+### `set_group_admin`
+
+Promotes a member to admin or demotes an existing admin back to a regular member. The bot must be the group owner to call this action successfully.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID in which to change the admin status.
+</ParamField>
+
+<ParamField body="user_id" type="number" required>
+  QQ number of the member whose admin status should change.
+</ParamField>
+
+<ParamField body="enable" type="boolean" optional>
+  `true` to promote to admin, `false` to demote to regular member. Defaults to `true`.
+</ParamField>
+
+**Response** — `null` on success.
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://127.0.0.1:3000/set_group_admin \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "group_id": 123456789,
+    "user_id": 987654321,
+    "enable": true
+  }'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+</CodeGroup>
+
+---
+
+### `set_group_name`
+
+Renames the group. The bot must be the owner or an admin with the appropriate permission. NapCat automatically retries with a fallback API path when the primary call returns error code `1287`.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID to rename.
+</ParamField>
+
+<ParamField body="group_name" type="string" required>
+  New name for the group.
+</ParamField>
+
+**Response** — `null` on success.
+
+---
+
+### `set_group_leave`
+
+Makes the bot leave the specified group. If the bot is the owner, it can optionally dissolve (disband) the group entirely by setting `is_dismiss` to `true`.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID to leave or dissolve.
+</ParamField>
+
+<ParamField body="is_dismiss" type="boolean" optional>
+  When `true` and the bot is the group owner, the group is dissolved rather than the bot simply leaving. Defaults to `false`.
+</ParamField>
+
+**Response** — `null` on success.
+
+---
+
+## Essence messages
+
+Essence messages (精华消息) are pinned highlights curated by group admins. NapCat maps them to internal message IDs and syncs with QQ's web API.
+
+### `get_essence_msg_list`
+
+Fetches all current essence messages in a group, resolving each to a full message ID and parsed content where possible.
+
+<ParamField body="group_id" type="number" required>
+  QQ group ID whose essence message list to retrieve.
+</ParamField>
+
+**Response** — array of essence message objects.
+
+<ResponseField name="data" type="EssenceMsg[]">
+  <Expandable title="EssenceMsg fields">
+    <ResponseField name="msg_seq" type="number">
+      Message sequence number within the group.
+    </ResponseField>
+    <ResponseField name="msg_random" type="number">
+      Random salt value that together with `msg_seq` uniquely identifies the message.
+    </ResponseField>
+    <ResponseField name="sender_id" type="number">
+      QQ number of the original message sender.
+    </ResponseField>
+    <ResponseField name="sender_nick" type="string">
+      Nickname of the original message sender.
+    </ResponseField>
+    <ResponseField name="operator_id" type="number">
+      QQ number of the admin who added the message as essence.
+    </ResponseField>
+    <ResponseField name="operator_nick" type="string">
+      Nickname of the admin who added the essence message.
+    </ResponseField>
+    <ResponseField name="message_id" type="number">
+      NapCat internal message ID usable with other message actions.
+    </ResponseField>
+    <ResponseField name="operator_time" type="number">
+      Unix timestamp when the message was pinned as essence.
+    </ResponseField>
+    <ResponseField name="content" type="OB11MessageData[]">
+      Parsed message content segments (text, image, etc.).
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+---
+
+### `set_essence_msg`
+
+Pins a message as an essence message in its group. The message must already exist and the bot must have admin or owner privileges.
+
+<ParamField body="message_id" type="number" required>
+  NapCat message ID (short ID) of the message to pin as essence.
+</ParamField>
+
+**Response** — `null` on success.
+
+---
+
+### `delete_essence_msg`
+
+Removes a message from the group's essence message list. You can identify the target by its NapCat message ID, or by the raw `msg_seq` + `msg_random` + `group_id` triple.
+
+<ParamField body="message_id" type="number" optional>
+  NapCat message ID of the essence message to remove. Required unless `msg_seq`, `msg_random`, and `group_id` are all provided.
+</ParamField>
+
+<ParamField body="msg_seq" type="string" optional>
+  Raw message sequence number. Must be combined with `msg_random` and `group_id`.
+</ParamField>
+
+<ParamField body="msg_random" type="string" optional>
+  Raw message random salt. Must be combined with `msg_seq` and `group_id`.
+</ParamField>
+
+<ParamField body="group_id" type="string" optional>
+  Group ID string. Must be combined with `msg_seq` and `msg_random`.
+</ParamField>
+
+**Response** — `null` on success.
+
+---
+
+## Group requests
+
+### `set_group_add_request`
+
+Approves or rejects a pending join request or group invitation. The `flag` must match the `flag` field carried in the corresponding `group_increase` or `group_decrease` event received from the event bus.
+
+<ParamField body="flag" type="string" required>
+  The request flag string received in the group join/invite event. This value identifies which pending request to act on.
+</ParamField>
+
+<ParamField body="sub_type" type="string" optional>
+  Event sub-type: `"add"` for a user requesting to join, or `"invite"` for a bot-invite. NapCat resolves the correct request from its notification cache regardless of this field, but it is recommended for clarity.
+</ParamField>
+
+<ParamField body="approve" type="boolean" optional>
+  `true` to approve the request, `false` to reject it. Defaults to `true`.
+</ParamField>
+
+<ParamField body="reason" type="string" optional>
+  Rejection reason shown to the requester when `approve` is `false`. Defaults to a single space when omitted.
+</ParamField>
+
+<ParamField body="count" type="number" optional>
+  How many recent group notifications to search through when looking up the request by flag. Defaults to `100`. Increase this if you are processing requests that arrive with significant delay.
+</ParamField>
+
+**Response** — `null` on success.
+
+<CodeGroup>
+```bash cURL – approve
+curl -X POST http://127.0.0.1:3000/set_group_add_request \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "flag": "1700000000",
+    "sub_type": "add",
+    "approve": true
+  }'
+```
+
+```bash cURL – reject
+curl -X POST http://127.0.0.1:3000/set_group_add_request \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "flag": "1700000000",
+    "sub_type": "add",
+    "approve": false,
+    "reason": "Invitation only group."
+  }'
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+</CodeGroup>

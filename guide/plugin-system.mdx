@@ -1,0 +1,320 @@
+---
+title: "Extend NapCat with custom actions via the plugin system"
+sidebarTitle: "Plugins"
+description: "Learn how to write NapCat plugins that inject custom OneBot actions and HTTP routes into a running NapCat instance."
+---
+
+NapCat's plugin system lets you extend the bot framework without forking the core codebase. Plugins are Node.js modules placed inside the NapCat plugin directory; NapCat's `OB11PluginMangerAdapter` discovers them automatically on startup, calls their lifecycle hooks, and merges any custom OneBot actions they export into the live action router. This page explains every step — from enabling the plugin transport to shipping a fully-typed custom action.
+
+## How the plugin transport works
+
+Plugins are managed by a dedicated network adapter called `OB11PluginMangerAdapter`. Like every other network adapter (HTTP server, WebSocket, etc.) it is declared in the `network.plugins` array of your `napcat.json`:
+
+```json
+{
+  "network": {
+    "plugins": [
+      {
+        "name": "plugin",
+        "enable": true,
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "debug": false
+      }
+    ]
+  }
+}
+```
+
+The `PluginConfig` schema mirrors the other adapter schemas (`enable`, `messagePostFormat`, `reportSelfMessage`, `debug`) — it just has no `port` or `url` because plugin communication is in-process.
+
+When `enable` is `true`, `OB11PluginMangerAdapter.open()` scans the plugin directory, loads each enabled plugin module, and calls `plugin_init(ctx)`. It also wires up event delivery so plugins receive every OneBot event through `plugin_onevent` or `plugin_onmessage`.
+
+## Plugin directory layout
+
+NapCat looks for plugins in the `plugins/` subfolder of its data directory. Each plugin is a folder whose `package.json` (or `plugin.json`) points to an entry file:
+
+```
+~/.config/napcat/plugins/
+└── my-echo-plugin/
+    ├── package.json          ← { "name": "my-echo-plugin", "main": "index.js" }
+    └── index.js              ← exports plugin_init, etc.
+```
+
+The `name` field in `package.json` becomes the plugin's ID used in logs and the WebUI.
+
+## Plugin module interface
+
+Every plugin must export a `plugin_init` function. Additional lifecycle exports are optional:
+
+```typescript
+import type { NapCatPluginContext, PluginModule } from 'napcat-onebot';
+
+export const plugin_init = async (ctx: NapCatPluginContext): Promise<void> => {
+  ctx.logger.info('My plugin loaded!');
+};
+
+// Optional: called for every OneBot event
+export const plugin_onevent: PluginModule['plugin_onevent'] = async (ctx, event) => {
+  if (event.post_type === 'message') {
+    ctx.logger.info('Received message:', (event as any).raw_message);
+  }
+};
+
+// Optional: called only for message events (convenience shortcut)
+export const plugin_onmessage: PluginModule['plugin_onmessage'] = async (ctx, msg) => {
+  ctx.logger.info('Message from', msg.user_id);
+};
+
+// Optional: called when the plugin is unloaded
+export const plugin_cleanup = async (ctx: NapCatPluginContext): Promise<void> => {
+  ctx.logger.info('My plugin unloaded, cleaning up...');
+};
+```
+
+The `NapCatPluginContext` object passed to every hook exposes:
+
+| Property | Type | Description |
+|---|---|---|
+| `core` | `NapCatCore` | Raw NTQQ core APIs |
+| `oneBot` | `NapCatOneBot11Adapter` | The OneBot adapter instance |
+| `actions` | `ActionMap` | The live action router map |
+| `logger` | `PluginLogger` | Prefixed logger (`[Plugin: id]`) |
+| `router` | `PluginRouterRegistry` | HTTP route registration |
+| `pluginManager` | `IPluginManager` | Plugin lifecycle management |
+| `dataPath` | `string` | Per-plugin data directory |
+| `configPath` | `string` | Per-plugin config file path |
+| `NapCatConfig` | `NapCatConfigClass` | Config schema builder helpers |
+| `getPluginExports` | `(id) => T` | Access another plugin's exports |
+
+## The auto-register mechanism
+
+NapCat includes a lightweight decorator-based auto-register system (`auto-register.ts`) that makes action registration declarative. An internal array `AutoRegisterRouter` collects every class decorated with `@ActionHandler`; during startup NapCat instantiates all collected classes and merges them into the action router.
+
+```typescript
+export const AutoRegisterRouter: Array<new (...args: any[]) => OneBotAction<unknown, unknown>> = [];
+
+export function ActionHandler(
+  target: new (...args: any[]) => OneBotAction<unknown, unknown>
+) {
+  AutoRegisterRouter.push(target);
+}
+```
+
+The two built-in test actions (`TestAutoRegister01` and `TestAutoRegister02`) demonstrate the pattern:
+
+```typescript
+// TestAutoRegister01.ts
+import { OneBotAction } from '@/napcat-onebot/action/OneBotAction';
+import { ActionName } from '@/napcat-onebot/action/router';
+import { ActionHandler } from '../auto-register';
+import { Type } from '@sinclair/typebox';
+
+@ActionHandler
+export default class TestAutoRegister01 extends OneBotAction<void, string> {
+  override actionName = ActionName.TestAutoRegister01;  // 'test_auto_register_01'
+  override payloadSchema = Type.Object({});
+  override returnSchema = Type.String({ description: '测试返回内容' });
+
+  async _handle(_payload: void): Promise<string> {
+    return 'AutoRegister Router Test';
+  }
+}
+```
+
+Both `TestAutoRegister01` and `TestAutoRegister02` follow identical patterns — a no-payload action that returns a fixed string. Your own custom actions follow the same structure.
+
+## Creating a custom action
+
+Custom actions extend the abstract `OneBotAction<PayloadType, ReturnDataType>` class. The generic parameters define the shape of the incoming payload and the shape of the data you return.
+
+<Steps>
+
+### Extend `OneBotAction`
+
+```typescript
+import { OneBotAction } from 'napcat-onebot';
+import { Type } from '@sinclair/typebox';
+
+export class EchoAction extends OneBotAction<{ message: string }, { echo: string }> {
+  // Required: the action name clients call, e.g. POST /echo
+  actionName = 'echo';
+
+  // Validated by @sinclair/typebox before _handle is called
+  payloadSchema = Type.Object({ message: Type.String() });
+
+  // Optional: appear in the generated OpenAPI docs
+  actionSummary = 'Echo a message back';
+  actionDescription = 'Returns the input message unchanged.';
+  actionTags = ['utilities'];
+
+  async _handle(payload: { message: string }) {
+    return { echo: payload.message };
+  }
+}
+```
+
+### Register the action in `plugin_init`
+
+Inject the class instance into the live `ctx.actions` map inside your `plugin_init`:
+
+```typescript
+import type { NapCatPluginContext } from 'napcat-onebot';
+import { EchoAction } from './EchoAction';
+
+export const plugin_init = async (ctx: NapCatPluginContext): Promise<void> => {
+  const action = new EchoAction(ctx.oneBot, ctx.core);
+  ctx.actions.set(action.actionName, action);
+  ctx.logger.info(`Registered action: ${action.actionName}`);
+};
+```
+
+### Call the action
+
+```bash
+curl -X POST http://localhost:6099/echo \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "message": "hello" }'
+```
+
+```json
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "echo": "hello" },
+  "message": "",
+  "wording": "",
+  "echo": null
+}
+```
+
+</Steps>
+
+## `OneBotAction` field reference
+
+| Field | Required | Description |
+|---|---|---|
+| `actionName` | ✅ | The action identifier (snake_case), matched against the request URL path or WebSocket `action` field |
+| `payloadSchema` | Recommended | TypeBox `TSchema` used to validate and coerce the request payload before `_handle` is called |
+| `returnSchema` | Optional | TypeBox schema for the return value; used only for OpenAPI documentation |
+| `actionSummary` | Optional | One-line description in the WebUI OpenAPI explorer |
+| `actionDescription` | Optional | Longer description shown in OpenAPI docs |
+| `actionTags` | Optional | Array of tag strings used to group actions in the OpenAPI explorer |
+| `payloadExample` | Optional | Example payload object for OpenAPI docs |
+| `returnExample` | Optional | Example return value for OpenAPI docs |
+| `useStream` | Optional | Set `true` to enable streaming response mode |
+
+## The `OB11Response` helper
+
+You normally never need to call `OB11Response` directly because `handle()` and `websocketHandle()` wrap your `_handle` return value automatically. However, if you need to craft a response yourself (e.g. in a middleware or test), the helpers are:
+
+```typescript
+import { OB11Response } from 'napcat-onebot';
+
+// Success response — retcode 0
+OB11Response.ok({ some: 'data' });
+
+// Error response — retcode is the numeric code you supply
+OB11Response.error('Something went wrong', 1400);
+
+// Generic response with explicit status/retcode
+OB11Response.res(data, 'ok', 0, '');
+```
+
+The shape returned by all three helpers is:
+
+```typescript
+{
+  status: string;      // 'ok' | 'failed'
+  retcode: number;     // 0 = success, non-zero = error
+  data: T | null;
+  message: string;
+  wording: string;
+  echo: unknown;
+  stream: 'stream-action' | 'normal-action';
+}
+```
+
+<Note>
+The `handle()` method (used for HTTP) returns error code `400` on validation failure. `websocketHandle()` returns code `1400` for the same condition, following the OneBot 11 extended error code convention.
+</Note>
+
+## Registering HTTP routes from a plugin
+
+Plugins can also register custom HTTP API routes and WebUI pages through `ctx.router`:
+
+```typescript
+export const plugin_init = async (ctx: NapCatPluginContext): Promise<void> => {
+  // Authenticated API route — mounted at /api/Plugin/ext/{pluginId}/status
+  ctx.router.get('/status', (req, res) => {
+    res.json({ ok: true, plugin: ctx.pluginName });
+  });
+
+  // Unauthenticated route — mounted at /plugin/{pluginId}/api/ping
+  ctx.router.getNoAuth('/ping', (_req, res) => {
+    res.send('pong');
+  });
+
+  // Register a WebUI page tab
+  ctx.router.page({
+    path: 'settings',
+    title: 'My Plugin Settings',
+    icon: '⚙️',
+    htmlFile: 'ui/settings.html',
+  });
+};
+```
+
+<Tip>
+Use `ctx.router.get` / `ctx.router.post` (authenticated) for any routes that read or write sensitive data. Use `ctx.router.getNoAuth` only for public webhooks or health checks.
+</Tip>
+
+## Plugin configuration schema
+
+Plugins can declare a typed configuration schema that renders a form automatically in the NapCat WebUI. Export `plugin_config_schema` from your module:
+
+```typescript
+import { NapCatConfig, type PluginConfigSchema } from 'napcat-onebot';
+
+export const plugin_config_schema: PluginConfigSchema = NapCatConfig.combine(
+  NapCatConfig.text('webhookUrl', 'Webhook URL', '', 'Where to forward events'),
+  NapCatConfig.boolean('enabled', 'Enable forwarding', true),
+  NapCatConfig.select('logLevel', 'Log level', [
+    { label: 'Info', value: 'info' },
+    { label: 'Warn', value: 'warn' },
+    { label: 'Error', value: 'error' },
+  ], 'info'),
+);
+```
+
+`NapCatConfig` is a static helper class with builder methods for each field type: `text`, `number`, `boolean`, `select`, `multiSelect`, `html`, and `plainText`. All values are stored in the per-plugin config file at `ctx.configPath`.
+
+## Plugin lifecycle summary
+
+```
+startup
+  └─ OB11PluginMangerAdapter.open()
+       └─ scanAndLoadPlugins()
+            └─ for each enabled plugin:
+                 ├─ loadPluginModule()   ← require() / import()
+                 └─ plugin_init(ctx)     ← your code runs here
+
+event received
+  └─ OB11PluginMangerAdapter.onEvent()
+       └─ plugin_onevent(ctx, event)     ← for every event
+       └─ plugin_onmessage(ctx, msg)     ← message events only
+
+shutdown / reload
+  └─ plugin_cleanup(ctx)                ← optional teardown
+```
+
+<Warning>
+Actions registered via `ctx.actions.set(...)` are **not** automatically removed when the plugin is unloaded. Implement `plugin_cleanup` to delete them:
+
+```typescript
+export const plugin_cleanup = async (ctx: NapCatPluginContext) => {
+  ctx.actions.delete('echo');
+};
+```
+</Warning>

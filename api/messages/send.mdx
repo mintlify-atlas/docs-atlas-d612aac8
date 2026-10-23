@@ -1,0 +1,406 @@
+---
+title: "Send messages to groups and private chats in NapCat"
+sidebarTitle: "Sending Messages"
+description: "Send private and group messages, recall them, react with an emoji, build forwarded message chains, and mark conversations as read."
+---
+
+NapCat exposes a family of OneBot 11 actions for outbound messaging. The general-purpose `send_msg` action automatically routes to a private chat or group based on `message_type`, while `send_private_msg` and `send_group_msg` provide dedicated endpoints when the destination is always known. All three actions accept both an array of typed message segments and a plain CQ code string, and they all return the `message_id` of the message that was created.
+
+---
+
+## send\_msg
+
+`send_msg` is the universal send action. It resolves the destination from `message_type`, falling back to whichever of `user_id` or `group_id` is present when `message_type` is omitted.
+
+<ParamField body="message_type" type="string">
+  Destination type: `'private'` for a direct message or `'group'` for a group chat. When omitted, NapCat infers the destination from whichever ID is supplied.
+</ParamField>
+
+<ParamField body="user_id" type="number" required>
+  Target user's QQ number. Required when `message_type` is `'private'` (or when `group_id` is absent).
+</ParamField>
+
+<ParamField body="group_id" type="number" required>
+  Target group number. Required when `message_type` is `'group'` (or when `user_id` is absent).
+</ParamField>
+
+<ParamField body="message" type="array | string" required>
+  The message content. Pass an array of [message segment objects](/api/messages/types) or a CQ code string such as `"[CQ:at,qq=12345] hello"`. A single segment object is also accepted and will be wrapped automatically.
+</ParamField>
+
+<ParamField body="auto_escape" type="boolean">
+  When `true`, a plain-string `message` is sent as literal text and CQ codes inside it are **not** decoded. Has no effect when `message` is already an array.
+</ParamField>
+
+<ParamField body="source" type="string">
+  Custom source label shown in the forwarded-message card header. Only applies when `message` contains `node` segments.
+</ParamField>
+
+<ParamField body="summary" type="string">
+  Summary line shown in the forwarded-message card preview. Only applies when `message` contains `node` segments.
+</ParamField>
+
+<ParamField body="prompt" type="string">
+  Notification pop-up text for the forwarded-message card. Only applies when `message` contains `node` segments.
+</ParamField>
+
+<ParamField body="timeout" type="number">
+  Custom send timeout in milliseconds, overriding the automatically calculated value. Useful when sending large media files.
+</ParamField>
+
+**Returns**
+
+<ResponseField name="message_id" type="number">
+  The NapCat short ID for the message that was sent. Store this value if you need to recall or reference the message later.
+</ResponseField>
+
+<ResponseField name="res_id" type="string">
+  Present only when `message` contained forwarded `node` segments — the upstream resource ID of the forwarded message bundle.
+</ResponseField>
+
+<ResponseField name="forward_id" type="string">
+  Alias for `res_id`, provided for go-cqhttp compatibility.
+</ResponseField>
+
+<CodeGroup>
+
+```bash Send to a group
+curl -X POST http://localhost:3000/send_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message_type": "group",
+    "group_id": 987654321,
+    "message": "Hello, group!"
+  }'
+```
+
+```bash Send to a private chat
+curl -X POST http://localhost:3000/send_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message_type": "private",
+    "user_id": 123456789,
+    "message": [
+      { "type": "text", "data": { "text": "Hey there!" } }
+    ]
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## send\_private\_msg
+
+Dedicated action for sending a direct message to a single user. The `message_type` is fixed to `'private'` internally — you only need `user_id`.
+
+<ParamField body="user_id" type="number" required>
+  The QQ number of the user to message.
+</ParamField>
+
+<ParamField body="message" type="array | string" required>
+  Message content — segment array, CQ string, or a single segment object.
+</ParamField>
+
+<ParamField body="auto_escape" type="boolean">
+  Treat a string `message` as plain text, preventing CQ code expansion.
+</ParamField>
+
+**Returns**
+
+<ResponseField name="message_id" type="number">
+  Short ID of the sent message.
+</ResponseField>
+
+<CodeGroup>
+
+```bash Send a private message
+curl -X POST http://localhost:3000/send_private_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": 123456789,
+    "message": "This is a private message."
+  }'
+```
+
+```bash Send with segment array
+curl -X POST http://localhost:3000/send_private_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": 123456789,
+    "message": [
+      { "type": "image", "data": { "file": "https://example.com/photo.png" } },
+      { "type": "text", "data": { "text": "Here is the image." } }
+    ]
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## send\_group\_msg
+
+Dedicated action for posting a message to a group chat. The `message_type` is fixed to `'group'` — only `group_id` is required.
+
+<ParamField body="group_id" type="number" required>
+  The number of the target group.
+</ParamField>
+
+<ParamField body="message" type="array | string" required>
+  Message content — segment array, CQ string, or a single segment object.
+</ParamField>
+
+<ParamField body="auto_escape" type="boolean">
+  Treat a string `message` as plain text, preventing CQ code expansion.
+</ParamField>
+
+**Returns**
+
+<ResponseField name="message_id" type="number">
+  Short ID of the sent message.
+</ResponseField>
+
+<CodeGroup>
+
+```bash Send a group message with an @mention
+curl -X POST http://localhost:3000/send_group_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": 987654321,
+    "message": [
+      { "type": "at", "data": { "qq": "123456789" } },
+      { "type": "text", "data": { "text": " Please check the announcement." } }
+    ]
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## delete\_msg
+
+Recall (unsend) a previously sent message. The operation is irreversible and subject to the standard QQ recall time window (typically two minutes for regular users).
+
+<ParamField body="message_id" type="number" required>
+  The `message_id` returned when the message was originally sent.
+</ParamField>
+
+**Returns `null`**
+
+<CodeGroup>
+
+```bash Recall a message
+curl -X POST http://localhost:3000/delete_msg \
+  -H "Content-Type: application/json" \
+  -d '{ "message_id": 123456 }'
+```
+
+</CodeGroup>
+
+---
+
+## mark\_msg\_as\_read
+
+Mark all messages in a conversation as read, identified either by a specific `message_id` or by the chat's `user_id`/`group_id`.
+
+<ParamField body="message_id" type="string">
+  ID of any message in the conversation. NapCat resolves the peer from this ID.
+</ParamField>
+
+<ParamField body="user_id" type="number | string">
+  QQ number of the private chat peer. Used when `message_id` is not supplied.
+</ParamField>
+
+<ParamField body="group_id" type="string">
+  Group number. Used when `message_id` and `user_id` are not supplied.
+</ParamField>
+
+**Returns `null`**
+
+<Note>
+  The following aliases are also available and accept identical parameters:
+
+  - **`mark_private_msg_as_read`** — convenience action targeting a private chat
+  - **`mark_group_msg_as_read`** — convenience action targeting a group chat
+  - **`_mark_all_msg_as_read`** — marks **all** conversations as read (no parameters required)
+</Note>
+
+---
+
+## set\_msg\_emoji\_like
+
+React to a message with a QQ emoji, equivalent to tapping the emoji reaction button in the QQ client.
+
+<ParamField body="message_id" type="number | string" required>
+  The message to react to.
+</ParamField>
+
+<ParamField body="emoji_id" type="number | string" required>
+  The QQ emoji ID to apply as a reaction. Common IDs include `76` (👍), `66` (💔), and `277` (🎉).
+</ParamField>
+
+<ParamField body="set" type="boolean">
+  Whether to add (`true`) or remove (`false`) the reaction. Defaults to `true`.
+</ParamField>
+
+**Returns:** result object from the underlying NTQQ API (typically `{ result: true }`).
+
+<CodeGroup>
+
+```bash Add a thumbs-up reaction
+curl -X POST http://localhost:3000/set_msg_emoji_like \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message_id": 123456,
+    "emoji_id": "76",
+    "set": true
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## send\_group\_forward\_msg / send\_private\_forward\_msg
+
+Send a chain of forwarded message nodes as a collapsed "forwarded messages" card. All items in `messages` must be `node`-type segments; mixing node and non-node segments in the same call is not allowed.
+
+<Note>
+  These are go-cqhttp compatible action names. The underlying implementation is the same as calling `send_group_msg` / `send_private_msg` with an array of `node` segments.
+</Note>
+
+**For `send_group_forward_msg`:**
+
+<ParamField body="group_id" type="number" required>
+  Target group number.
+</ParamField>
+
+<ParamField body="messages" type="array" required>
+  Array of `node` message segments. Each node must reference an existing message via `id`, or define a custom node with `user_id`, `nickname`, and `content`.
+</ParamField>
+
+**For `send_private_forward_msg`:**
+
+<ParamField body="user_id" type="number" required>
+  Target user's QQ number.
+</ParamField>
+
+<ParamField body="messages" type="array" required>
+  Array of `node` message segments.
+</ParamField>
+
+**Returns**
+
+<ResponseField name="message_id" type="number">
+  Short ID of the forwarded message card that was sent.
+</ResponseField>
+
+<ResponseField name="res_id" type="string">
+  Resource ID of the uploaded forward bundle.
+</ResponseField>
+
+<ResponseField name="forward_id" type="string">
+  Alias for `res_id`.
+</ResponseField>
+
+<CodeGroup>
+
+```bash Send a group forward message card
+curl -X POST http://localhost:3000/send_group_forward_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": 987654321,
+    "messages": [
+      {
+        "type": "node",
+        "data": {
+          "user_id": "123456789",
+          "nickname": "Alice",
+          "content": [
+            { "type": "text", "data": { "text": "First message in the card." } }
+          ]
+        }
+      },
+      {
+        "type": "node",
+        "data": {
+          "user_id": "987654321",
+          "nickname": "Bob",
+          "content": [
+            { "type": "text", "data": { "text": "Second message in the card." } }
+          ]
+        }
+      }
+    ]
+  }'
+```
+
+```bash Forward existing messages by ID
+curl -X POST http://localhost:3000/send_group_forward_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": 987654321,
+    "messages": [
+      { "type": "node", "data": { "id": "111111" } },
+      { "type": "node", "data": { "id": "111112" } }
+    ]
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## forward\_friend\_single\_msg / forward\_group\_single\_msg
+
+Forward a single existing message to a private chat or group without building a full forwarded-message card.
+
+**For `forward_friend_single_msg`:**
+
+<ParamField body="user_id" type="string" required>
+  QQ number of the destination user.
+</ParamField>
+
+<ParamField body="message_id" type="number | string" required>
+  Short ID of the source message to forward.
+</ParamField>
+
+**For `forward_group_single_msg`:**
+
+<ParamField body="group_id" type="string" required>
+  Number of the destination group.
+</ParamField>
+
+<ParamField body="message_id" type="number | string" required>
+  Short ID of the source message to forward.
+</ParamField>
+
+**Returns `null`**
+
+<Tip>
+  Use `forward_friend_single_msg` / `forward_group_single_msg` when you want to relay a specific message directly — for example, forwarding a file or image received in one group into another. For chaining multiple messages into a card, use `send_group_forward_msg` / `send_private_forward_msg` instead.
+</Tip>
+
+<CodeGroup>
+
+```bash Forward a message to a group
+curl -X POST http://localhost:3000/forward_group_single_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "987654321",
+    "message_id": 123456
+  }'
+```
+
+```bash Forward a message to a friend
+curl -X POST http://localhost:3000/forward_friend_single_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123456789",
+    "message_id": 123456
+  }'
+```
+
+</CodeGroup>

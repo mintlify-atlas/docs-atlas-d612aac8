@@ -1,0 +1,549 @@
+---
+title: "NapCat message segment types and CQ code reference"
+sidebarTitle: "Message Types"
+description: "Complete reference for every message segment type NapCat supports — text, image, audio, video, at, face, reply, json, xml, forward nodes, and more."
+---
+
+NapCat represents every message as an **array of message segment objects**, each with a `type` string and a `data` object. This format is the OneBot 11 "array" message format. The same segments appear in both outgoing send payloads and incoming event payloads, so this reference applies to `send_msg`, `send_group_msg`, `send_private_msg`, and every event you receive from NapCat.
+
+Each segment looks like this:
+
+```json
+{ "type": "<segment type>", "data": { ... } }
+```
+
+<Note>
+  **`messagePostFormat` setting:** When a network adapter is configured with `messagePostFormat: 'string'`, incoming message events deliver the `message` field as a single CQ code string (e.g. `"[CQ:at,qq=12345] hello"`) instead of a segment array. Outgoing API calls always accept both formats regardless of this setting.
+</Note>
+
+---
+
+## Segment type summary
+
+| Type | Description | Sendable | Receivable |
+|---|---|---|---|
+| `text` | Plain text | ✅ | ✅ |
+| `image` | Image (URL, base64, local path, file URI) | ✅ | ✅ |
+| `record` | Voice / audio message | ✅ | ✅ |
+| `video` | Video message | ✅ | ✅ |
+| `file` | File attachment | ✅ | ✅ |
+| `at` | @mention | ✅ | ✅ |
+| `face` | QQ emoji face | ✅ | ✅ |
+| `mface` | Store / market emoji | ✅ | ✅ |
+| `reply` | Quote reply | ✅ | ✅ |
+| `forward` | Forwarded message card reference | ❌ | ✅ |
+| `node` | Forwarded message node (building a card) | ✅ | ❌ |
+| `json` | JSON card message (Ark) | ✅ | ✅ |
+| `xml` | XML card message | ✅ | ✅ |
+| `markdown` | Markdown content (bot accounts only) | ✅ | ✅ |
+| `poke` | Poke / nudge action | ✅ | ✅ |
+| `dice` | Random dice result | ✅ | ✅ |
+| `rps` | Rock-paper-scissors | ✅ | ✅ |
+| `music` | Music share card | ✅ | ✅ |
+| `contact` | Contact card share | ❌ | ✅ |
+| `location` | Location share | ❌ | ✅ |
+| `miniapp` | Mini program card (JSON-based) | ✅ | ✅ |
+
+---
+
+## text
+
+Plain UTF-8 text. Multiple `text` segments in the same message are each rendered in sequence.
+
+```json
+{ "type": "text", "data": { "text": "Hello, world!" } }
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `text` | string | ✅ | The text content to send |
+
+---
+
+## image
+
+A still image. The `file` field accepts any of: an HTTPS/HTTP URL, a `base64://` data URI, a local absolute file path, or a `file://` URI.
+
+```json
+{
+  "type": "image",
+  "data": {
+    "file": "https://example.com/photo.png",
+    "summary": "[picture]",
+    "sub_type": 0
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `file` | string | ✅ | Image source — URL, `base64://…`, absolute path, or `file:///…` |
+| `url` | string | | Download URL (present on received images) |
+| `name` | string | | Custom filename hint |
+| `summary` | string | | Caption shown in the chat list preview |
+| `sub_type` | number | | Image subtype: `0` normal, `1` emoji-size |
+| `thumb` | string | | Thumbnail URL (received only) |
+
+---
+
+## record
+
+A voice message (PTT / audio clip). The `file` field follows the same source format as `image`.
+
+```json
+{
+  "type": "record",
+  "data": {
+    "file": "file:///tmp/audio.silk"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `file` | string | ✅ | Audio source — URL, `base64://…`, local path, or `file:///…` |
+| `url` | string | | Download URL (received only) |
+| `path` | string | | Local path after download (received only) |
+| `name` | string | | Filename hint |
+
+<Tip>
+  NapCat accepts common audio formats and converts them automatically. SILK and AMR are the native QQ formats — other formats may be re-encoded.
+</Tip>
+
+---
+
+## video
+
+A video message. Same `file` source flexibility as `image`.
+
+```json
+{
+  "type": "video",
+  "data": {
+    "file": "https://example.com/clip.mp4"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `file` | string | ✅ | Video source — URL, `base64://…`, local path, or `file:///…` |
+| `url` | string | | Download URL (received only) |
+| `path` | string | | Local path after download (received only) |
+| `name` | string | | Filename hint |
+| `thumb` | string | | Thumbnail image (received only) |
+
+---
+
+## file
+
+Send a file attachment. Received file messages are also reported as `file` segments.
+
+```json
+{
+  "type": "file",
+  "data": {
+    "file": "file:///home/napcat/report.pdf",
+    "name": "Q4 Report.pdf"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `file` | string | ✅ | File source — URL, `base64://…`, local path, or `file:///…` |
+| `name` | string | | Display name shown in chat |
+| `url` | string | | Download URL (received only) |
+| `path` | string | | Local path after download (received only) |
+
+---
+
+## at
+
+Mention a group member. Use `qq: "all"` to @everyone.
+
+```json
+{ "type": "at", "data": { "qq": "123456789" } }
+```
+
+```json
+{ "type": "at", "data": { "qq": "all" } }
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `qq` | string | ✅ | Target QQ number, or `"all"` to mention everyone |
+| `name` | string | | Fallback display name shown when the user is not in the group |
+
+---
+
+## face
+
+A standard QQ emoji identified by its integer face ID.
+
+```json
+{ "type": "face", "data": { "id": "21" } }
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | ✅ | QQ face ID (e.g. `"21"` for 😊, `"14"` for 😄) |
+| `resultId` | string | | Chain-click result ID (received only) |
+| `chainCount` | number | | Number of chain clicks (received only) |
+
+---
+
+## mface
+
+A store / market emoji (super emoji). These require the full package and emoji IDs.
+
+```json
+{
+  "type": "mface",
+  "data": {
+    "emoji_package_id": 1,
+    "emoji_id": "100",
+    "key": "some-key",
+    "summary": "[super emoji]"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `emoji_package_id` | number | ✅ | Emoji package (store) ID |
+| `emoji_id` | string | ✅ | Emoji ID within the package |
+| `key` | string | ✅ | Unlock/activation key |
+| `summary` | string | ✅ | Fallback text for unsupported clients |
+
+---
+
+## reply
+
+Quote-reply to an earlier message. Always place this as the **first** segment in the array when combined with other content.
+
+```json
+{ "type": "reply", "data": { "id": "123456" } }
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | | Short message ID to quote (use this for most cases) |
+| `seq` | number | | Message sequence number — takes priority over `id` when both are present |
+
+---
+
+## forward
+
+A reference to an existing forwarded message card. This segment is reported on **incoming** events; to send a new card, use `node` segments via `send_group_forward_msg`.
+
+```json
+{
+  "type": "forward",
+  "data": {
+    "id": "AbCdEfGhIjKl",
+    "content": [ /* array of OB11Message objects, populated by NapCat */ ]
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Resource ID of the forward card — pass this to `get_forward_msg` |
+| `content` | OB11Message[] | The expanded messages inside the card (populated by NapCat on receive) |
+
+---
+
+## node
+
+A single entry in a forwarded message card. Used **only** when building a card to send via `send_group_forward_msg` or `send_private_forward_msg`. Nodes cannot be mixed with non-node segments.
+
+**Reference an existing message by ID:**
+
+```json
+{ "type": "node", "data": { "id": "123456" } }
+```
+
+**Define a custom node:**
+
+```json
+{
+  "type": "node",
+  "data": {
+    "user_id": "123456789",
+    "nickname": "Alice",
+    "content": [
+      { "type": "text", "data": { "text": "This is a custom forwarded message." } }
+    ],
+    "time": "1710000000"
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Short ID of an existing message to forward. When present, all other fields are ignored |
+| `user_id` | number \| string | Displayed sender QQ number for a custom node |
+| `uin` | number \| string | Alias for `user_id` (go-cqhttp compatibility) |
+| `nickname` | string | Displayed sender nickname |
+| `name` | string | Alias for `nickname` |
+| `content` | array | Message segments for the custom node body |
+| `time` | string | Timestamp override (Unix seconds string) |
+| `source` | string | Custom source label for the card header |
+| `summary` | string | Card preview summary text |
+| `prompt` | string | Notification pop-up text |
+
+---
+
+## json
+
+A JSON card (Ark message). The `data` field must be a serialised JSON string representing a valid QQ Ark payload.
+
+```json
+{
+  "type": "json",
+  "data": {
+    "data": "{\"app\":\"com.tencent.miniapp\",\"desc\":\"\",\"view\":\"index\"}"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `data` | string \| object | ✅ | JSON string (or object — NapCat will stringify it) |
+| `config.token` | string | | Access token for privileged Ark types |
+
+---
+
+## xml
+
+An XML card message. Used for certain rich-media cards and legacy QQ service messages.
+
+```json
+{
+  "type": "xml",
+  "data": {
+    "data": "<?xml version='1.0'?><msg>...</msg>"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `data` | string | ✅ | Raw XML string |
+
+---
+
+## markdown
+
+A Markdown-rendered message. **Only supported for verified bot accounts.** Regular user accounts cannot send this type.
+
+```json
+{
+  "type": "markdown",
+  "data": {
+    "content": "## Hello\n\nThis is **bold** text."
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `content` | string | ✅ | Markdown source string |
+
+---
+
+## poke
+
+Send a "nudge" or poke action towards a user.
+
+```json
+{
+  "type": "poke",
+  "data": {
+    "type": "1",
+    "id": "1"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | string | ✅ | Poke type identifier |
+| `id` | string | ✅ | Poke action ID |
+
+---
+
+## dice
+
+Send a random dice roll. On receive, `result` holds the face shown (1–6).
+
+```json
+{ "type": "dice", "data": { "result": 4 } }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `result` | number \| string | Dice result (1–6). On send, the value is usually ignored and randomised by QQ |
+
+---
+
+## rps
+
+Rock-paper-scissors ("finger-guessing game"). On receive, `result` holds the outcome (1 = rock, 2 = scissors, 3 = paper).
+
+```json
+{ "type": "rps", "data": { "result": 2 } }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `result` | number \| string | Outcome: `1` rock, `2` scissors, `3` paper |
+
+---
+
+## music
+
+Share a music card from a streaming platform, or a fully custom card.
+
+**Share by platform ID:**
+
+```json
+{
+  "type": "music",
+  "data": {
+    "type": "163",
+    "id": "18126594"
+  }
+}
+```
+
+**Custom music card:**
+
+```json
+{
+  "type": "music",
+  "data": {
+    "type": "custom",
+    "url": "https://example.com/song",
+    "audio": "https://example.com/song.mp3",
+    "title": "My Song",
+    "image": "https://example.com/cover.jpg",
+    "content": "Artist Name"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `type` | string | ✅ | Platform: `'qq'`, `'163'`, `'kugou'`, `'migu'`, `'kuwo'`, or `'custom'` |
+| `id` | string \| number | When not `custom` | Platform track ID |
+| `url` | string | When `custom` | Tap-through URL |
+| `audio` | string | | Direct audio stream URL |
+| `title` | string | | Track title |
+| `image` | string | When `custom` | Album art URL |
+| `content` | string | | Artist / subtitle text |
+
+---
+
+## contact
+
+Received when someone shares a contact card. Not sendable by bots.
+
+```json
+{ "type": "contact", "data": { "type": "qq", "id": "123456789" } }
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `type` | `'qq'` \| `'group'` | Whether this is a user or group card |
+| `id` | string | QQ number or group number |
+
+---
+
+## location
+
+Received when a user shares a location. Not sendable by bots.
+
+```json
+{
+  "type": "location",
+  "data": {
+    "lat": "39.9042",
+    "lon": "116.4074",
+    "title": "Tiananmen Square",
+    "content": "Beijing, China"
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `lat` | string \| number | Latitude |
+| `lon` | string \| number | Longitude |
+| `title` | string | Location name |
+| `content` | string | Additional description |
+
+---
+
+## miniapp
+
+A mini program (小程序) card, internally represented as a JSON string.
+
+```json
+{
+  "type": "miniapp",
+  "data": {
+    "data": "{\"app\":\"com.tencent.miniapp_01\",\"desc\":\"\"}"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `data` | string | ✅ | Serialised mini program JSON |
+
+---
+
+## Complete multi-segment example
+
+The following shows a real-world composed message: a quote reply, an @mention, plain text, and an image — all in a single send call.
+
+```json
+[
+  { "type": "reply", "data": { "id": "12345" } },
+  { "type": "at", "data": { "qq": "67890" } },
+  { "type": "text", "data": { "text": " Check this image: " } },
+  { "type": "image", "data": { "file": "https://example.com/image.png" } }
+]
+```
+
+Sent as a `send_group_msg` payload:
+
+```bash
+curl -X POST http://localhost:3000/send_group_msg \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": 987654321,
+    "message": [
+      { "type": "reply", "data": { "id": "12345" } },
+      { "type": "at", "data": { "qq": "67890" } },
+      { "type": "text", "data": { "text": " Check this image: " } },
+      { "type": "image", "data": { "file": "https://example.com/image.png" } }
+    ]
+  }'
+```
+
+---
+
+## CQ code equivalents
+
+When `messagePostFormat` is `'string'`, each segment maps to a CQ code token. The multi-segment example above would arrive as:
+
+```text
+[CQ:reply,id=12345][CQ:at,qq=67890] Check this image: [CQ:image,file=https://example.com/image.png]
+```
+
+<Note>
+  CQ codes use comma-separated `key=value` pairs inside `[CQ:type,…]` tags. Special characters in values are percent-encoded. The array segment format is preferred for programmatic use because it avoids encoding edge cases.
+</Note>

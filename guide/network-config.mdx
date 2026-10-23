@@ -1,0 +1,474 @@
+---
+title: "Configure HTTP, WebSocket, and SSE network adapters"
+sidebarTitle: "Network Config"
+description: "Set up HTTP servers, SSE endpoints, webhooks, WebSocket servers and clients, and plugins in NapCat's network.json config file."
+---
+
+NapCat implements the OneBot 11 protocol over six distinct network adapter types, each configured as an array of independent named instances inside `onebot11_{uin}.json` (for example `onebot11_123456789.json`). This file also holds global OneBot settings such as message format, file proxies, and request timeouts. You can manage all adapters through the WebUI's **Network** page, or by editing the JSON file directly.
+
+<Note>
+  All adapter arrays default to empty (`[]`). NapCat only activates an adapter when its `enable` field is set to `true`. You can define multiple instances of the same adapter type — for example two HTTP servers on different ports — by adding additional objects to the relevant array.
+</Note>
+
+## Complete network.json structure
+
+```json onebot11_123456789.json
+{
+  "network": {
+    "httpServers": [
+      {
+        "name": "http-server",
+        "enable": false,
+        "port": 3000,
+        "host": "127.0.0.1",
+        "enableCors": true,
+        "enableWebsocket": false,
+        "messagePostFormat": "array",
+        "token": "",
+        "debug": false
+      }
+    ],
+    "httpSseServers": [
+      {
+        "name": "http-sse-server",
+        "enable": false,
+        "port": 3000,
+        "host": "127.0.0.1",
+        "enableCors": true,
+        "enableWebsocket": false,
+        "messagePostFormat": "array",
+        "token": "",
+        "debug": false,
+        "reportSelfMessage": false
+      }
+    ],
+    "httpClients": [
+      {
+        "name": "http-client",
+        "enable": false,
+        "url": "http://localhost:8080",
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "token": "",
+        "debug": false
+      }
+    ],
+    "websocketServers": [
+      {
+        "name": "websocket-server",
+        "enable": false,
+        "host": "127.0.0.1",
+        "port": 3001,
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "token": "",
+        "enableForcePushEvent": true,
+        "debug": false,
+        "heartInterval": 30000
+      }
+    ],
+    "websocketClients": [
+      {
+        "name": "websocket-client",
+        "enable": false,
+        "url": "ws://localhost:8082",
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "reconnectInterval": 5000,
+        "token": "",
+        "debug": false,
+        "heartInterval": 30000,
+        "verifyCertificate": true
+      }
+    ],
+    "plugins": [
+      {
+        "name": "plugin",
+        "enable": false,
+        "messagePostFormat": "array",
+        "reportSelfMessage": false,
+        "debug": false
+      }
+    ]
+  },
+  "musicSignUrl": "",
+  "enableLocalFile2Url": false,
+  "parseMultMsg": false,
+  "imageDownloadProxy": "",
+  "timeout": {
+    "baseTimeout": 10000,
+    "uploadSpeedKBps": 256,
+    "downloadSpeedKBps": 256,
+    "maxTimeout": 1800000
+  }
+}
+```
+
+## Adapter types
+
+<Tabs>
+  <Tab title="HTTP Server">
+    The HTTP server adapter exposes a standard OneBot 11 HTTP API. Your application sends HTTP POST requests to call OneBot actions, and NapCat returns JSON responses synchronously.
+
+    ```json
+    {
+      "name": "http-server",
+      "enable": true,
+      "port": 3000,
+      "host": "127.0.0.1",
+      "enableCors": true,
+      "enableWebsocket": false,
+      "messagePostFormat": "array",
+      "token": "my-secret-token",
+      "debug": false
+    }
+    ```
+
+    <ParamField body="name" type="string" default="http-server">
+      A human-readable label for this adapter instance. Used in logs and in the WebUI to identify the adapter.
+    </ParamField>
+
+    <ParamField body="enable" type="boolean" default="false">
+      Whether this adapter is active. Set to `true` to start the HTTP server.
+    </ParamField>
+
+    <ParamField body="port" type="number" default="3000">
+      TCP port the server listens on. Must be a free port in the range 1–65535.
+    </ParamField>
+
+    <ParamField body="host" type="string" default="127.0.0.1">
+      Network interface to bind to. Use `"0.0.0.0"` to accept connections from all interfaces, or `"::"` for all IPv6 interfaces. Keep it as `"127.0.0.1"` to restrict access to localhost only.
+    </ParamField>
+
+    <ParamField body="enableCors" type="boolean" default="true">
+      Set `Access-Control-Allow-Origin: *` on all responses, allowing browser-based clients to call the API from any origin.
+    </ParamField>
+
+    <ParamField body="enableWebsocket" type="boolean" default="false">
+      Upgrade HTTP connections to WebSocket on the same port, providing a combined HTTP + WebSocket endpoint.
+    </ParamField>
+
+    <ParamField body="messagePostFormat" type="string" default="array">
+      Controls how message segments are serialised in push payloads. `"array"` sends a JSON array of segment objects (recommended); `"string"` sends CQ-code strings.
+    </ParamField>
+
+    <ParamField body="token" type="string" default="">
+      Bearer token for authenticating incoming requests. When non-empty, every request must include the header `Authorization: Bearer <token>`. Leave empty to disable authentication.
+    </ParamField>
+
+    <ParamField body="debug" type="boolean" default="false">
+      Log the full request and response body for every HTTP call to the console. Do not enable in production — this prints sensitive message content.
+    </ParamField>
+  </Tab>
+
+  <Tab title="HTTP SSE Server">
+    The HTTP SSE server adapter provides a Server-Sent Events (SSE) stream for receiving OneBot 11 events in real time. Clients subscribe to the event stream with a persistent GET connection; the same port can also receive action calls over HTTP POST.
+
+    ```json
+    {
+      "name": "http-sse-server",
+      "enable": true,
+      "port": 3000,
+      "host": "127.0.0.1",
+      "enableCors": true,
+      "enableWebsocket": false,
+      "messagePostFormat": "array",
+      "token": "",
+      "debug": false,
+      "reportSelfMessage": false
+    }
+    ```
+
+    <ParamField body="name" type="string" default="http-sse-server">
+      A human-readable label for this adapter instance.
+    </ParamField>
+
+    <ParamField body="enable" type="boolean" default="false">
+      Whether this adapter is active.
+    </ParamField>
+
+    <ParamField body="port" type="number" default="3000">
+      TCP port the SSE server listens on.
+    </ParamField>
+
+    <ParamField body="host" type="string" default="127.0.0.1">
+      Network interface to bind to.
+    </ParamField>
+
+    <ParamField body="enableCors" type="boolean" default="true">
+      Add CORS headers to all responses.
+    </ParamField>
+
+    <ParamField body="enableWebsocket" type="boolean" default="false">
+      Accept WebSocket upgrades on the same port alongside the SSE stream.
+    </ParamField>
+
+    <ParamField body="messagePostFormat" type="string" default="array">
+      Message serialisation format — `"array"` or `"string"` (CQ code).
+    </ParamField>
+
+    <ParamField body="token" type="string" default="">
+      Bearer token required in the `Authorization` header. Leave empty to disable token authentication.
+    </ParamField>
+
+    <ParamField body="reportSelfMessage" type="boolean" default="false">
+      Push events for messages sent by the bot itself. Useful when you need to track outgoing messages in your application.
+    </ParamField>
+
+    <ParamField body="debug" type="boolean" default="false">
+      Enable verbose request/response logging.
+    </ParamField>
+  </Tab>
+
+  <Tab title="HTTP Client (Webhook)">
+    The HTTP client adapter pushes OneBot 11 events to a remote HTTP endpoint via POST requests — the traditional webhook pattern. NapCat acts as the client; your server receives the events.
+
+    ```json
+    {
+      "name": "http-client",
+      "enable": true,
+      "url": "http://localhost:8080",
+      "messagePostFormat": "array",
+      "reportSelfMessage": false,
+      "token": "",
+      "debug": false
+    }
+    ```
+
+    <ParamField body="name" type="string" default="http-client">
+      A human-readable label for this adapter instance.
+    </ParamField>
+
+    <ParamField body="enable" type="boolean" default="false">
+      Whether this adapter is active.
+    </ParamField>
+
+    <ParamField body="url" type="string" default="http://localhost:8080">
+      The full URL of the webhook endpoint NapCat will POST events to. Include scheme, host, port, and path — for example `"http://myapp.example.com:8080/qq/event"`.
+    </ParamField>
+
+    <ParamField body="messagePostFormat" type="string" default="array">
+      Message serialisation format — `"array"` or `"string"`.
+    </ParamField>
+
+    <ParamField body="reportSelfMessage" type="boolean" default="false">
+      Also POST events for messages sent by the bot account.
+    </ParamField>
+
+    <ParamField body="token" type="string" default="">
+      When set, NapCat adds `Authorization: Bearer <token>` to outgoing webhook requests so your server can verify the origin.
+    </ParamField>
+
+    <ParamField body="debug" type="boolean" default="false">
+      Log the full payload of every outgoing webhook call.
+    </ParamField>
+  </Tab>
+
+  <Tab title="WebSocket Server">
+    The WebSocket server adapter opens a persistent WebSocket endpoint. Connected clients receive all OneBot 11 events and can send action requests over the same connection.
+
+    ```json
+    {
+      "name": "websocket-server",
+      "enable": true,
+      "host": "127.0.0.1",
+      "port": 3001,
+      "messagePostFormat": "array",
+      "reportSelfMessage": false,
+      "token": "",
+      "enableForcePushEvent": true,
+      "debug": false,
+      "heartInterval": 30000
+    }
+    ```
+
+    <ParamField body="name" type="string" default="websocket-server">
+      A human-readable label for this adapter instance.
+    </ParamField>
+
+    <ParamField body="enable" type="boolean" default="false">
+      Whether this adapter is active.
+    </ParamField>
+
+    <ParamField body="host" type="string" default="127.0.0.1">
+      Network interface to bind to.
+    </ParamField>
+
+    <ParamField body="port" type="number" default="3001">
+      TCP port the WebSocket server listens on.
+    </ParamField>
+
+    <ParamField body="messagePostFormat" type="string" default="array">
+      Message serialisation format — `"array"` or `"string"`.
+    </ParamField>
+
+    <ParamField body="reportSelfMessage" type="boolean" default="false">
+      Push events for messages sent by the bot account.
+    </ParamField>
+
+    <ParamField body="token" type="string" default="">
+      Bearer token. Clients must send `Authorization: Bearer <token>` during the WebSocket handshake.
+    </ParamField>
+
+    <ParamField body="enableForcePushEvent" type="boolean" default="true">
+      Push events immediately to all connected clients without waiting for a subscription handshake. Disable only when your framework requires explicit event subscription.
+    </ParamField>
+
+    <ParamField body="heartInterval" type="number" default="30000">
+      Interval in milliseconds at which NapCat sends a heartbeat frame to each connected client. Set to `0` to disable heartbeats.
+    </ParamField>
+
+    <ParamField body="debug" type="boolean" default="false">
+      Log every incoming and outgoing WebSocket message.
+    </ParamField>
+  </Tab>
+
+  <Tab title="WebSocket Client">
+    The WebSocket client adapter connects outward to a remote WebSocket server — typically a bot framework or reverse proxy. NapCat automatically reconnects on disconnection.
+
+    ```json
+    {
+      "name": "websocket-client",
+      "enable": true,
+      "url": "ws://localhost:8082",
+      "messagePostFormat": "array",
+      "reportSelfMessage": false,
+      "reconnectInterval": 5000,
+      "token": "",
+      "debug": false,
+      "heartInterval": 30000,
+      "verifyCertificate": true
+    }
+    ```
+
+    <ParamField body="name" type="string" default="websocket-client">
+      A human-readable label for this adapter instance.
+    </ParamField>
+
+    <ParamField body="enable" type="boolean" default="false">
+      Whether this adapter is active.
+    </ParamField>
+
+    <ParamField body="url" type="string" default="ws://localhost:8082">
+      The WebSocket URL NapCat should connect to. Use `"wss://"` for TLS-encrypted connections.
+    </ParamField>
+
+    <ParamField body="messagePostFormat" type="string" default="array">
+      Message serialisation format — `"array"` or `"string"`.
+    </ParamField>
+
+    <ParamField body="reportSelfMessage" type="boolean" default="false">
+      Forward events for messages sent by the bot account to the remote server.
+    </ParamField>
+
+    <ParamField body="reconnectInterval" type="number" default="5000">
+      Time in milliseconds to wait before attempting to reconnect after a disconnection. Set to a higher value to avoid hammering an unavailable server.
+    </ParamField>
+
+    <ParamField body="token" type="string" default="">
+      Bearer token sent in the `Authorization` header during the WebSocket handshake. Must match the token expected by the remote server.
+    </ParamField>
+
+    <ParamField body="heartInterval" type="number" default="30000">
+      Interval in milliseconds for sending heartbeat frames to the remote server.
+    </ParamField>
+
+    <ParamField body="verifyCertificate" type="boolean" default="true">
+      Verify the TLS certificate of the remote server when connecting over `wss://`. Set to `false` only in development environments with self-signed certificates.
+    </ParamField>
+
+    <ParamField body="debug" type="boolean" default="false">
+      Log every message exchanged with the remote server.
+    </ParamField>
+  </Tab>
+
+  <Tab title="Plugin">
+    The plugin adapter provides an in-process OneBot 11 interface for NapCat plugins that run inside the same Node.js process. Plugins receive events and call actions without any network overhead.
+
+    ```json
+    {
+      "name": "my-plugin",
+      "enable": true,
+      "messagePostFormat": "array",
+      "reportSelfMessage": false,
+      "debug": false
+    }
+    ```
+
+    <ParamField body="name" type="string" default="plugin">
+      The identifier of the plugin. This must match the plugin's registered name.
+    </ParamField>
+
+    <ParamField body="enable" type="boolean" default="false">
+      Whether this plugin adapter is active.
+    </ParamField>
+
+    <ParamField body="messagePostFormat" type="string" default="array">
+      Message serialisation format — `"array"` or `"string"`.
+    </ParamField>
+
+    <ParamField body="reportSelfMessage" type="boolean" default="false">
+      Deliver events for messages sent by the bot to the plugin.
+    </ParamField>
+
+    <ParamField body="debug" type="boolean" default="false">
+      Enable verbose event/action logging for this plugin.
+    </ParamField>
+  </Tab>
+</Tabs>
+
+## Global OneBot settings
+
+In addition to the `network` object, `onebot11_{uin}.json` holds several top-level settings that affect all adapters.
+
+<ParamField body="musicSignUrl" type="string" default="">
+  URL of an external music-signing service used for the `music` message segment. Required for sending music cards on platforms that enforce signature verification. Leave empty to use the built-in method.
+</ParamField>
+
+<ParamField body="enableLocalFile2Url" type="boolean" default="false">
+  When `true`, NapCat converts local file paths in `file://` URLs to HTTP URLs served by the WebUI. Convenient for sharing local files in messages without manually hosting them.
+</ParamField>
+
+<ParamField body="parseMultMsg" type="boolean" default="false">
+  Automatically parse forwarded message packets (`node` segments) into their constituent messages. Enables richer forwarded-message handling at the cost of additional processing.
+</ParamField>
+
+<ParamField body="imageDownloadProxy" type="string" default="">
+  HTTP/HTTPS proxy URL used when NapCat downloads images from QQ's CDN, for example `"http://proxy.example.com:8080"`. Leave empty to connect directly.
+</ParamField>
+
+### Timeout settings
+
+The `timeout` object controls how long NapCat waits for file transfers and API responses.
+
+<ParamField body="timeout.baseTimeout" type="number" default="10000">
+  Base timeout in milliseconds applied to all operations before adjusting for data size.
+</ParamField>
+
+<ParamField body="timeout.uploadSpeedKBps" type="number" default="256">
+  Assumed upload speed in KB/s used when calculating the timeout for outgoing file transfers.
+</ParamField>
+
+<ParamField body="timeout.downloadSpeedKBps" type="number" default="256">
+  Assumed download speed in KB/s used when calculating the timeout for incoming file transfers.
+</ParamField>
+
+<ParamField body="timeout.maxTimeout" type="number" default="1800000">
+  Hard ceiling on any computed timeout, in milliseconds (default 30 minutes). Prevents infinite waits when the speed-based calculation produces very large values for large files.
+</ParamField>
+
+## Token-based authentication
+
+All server-side adapters (HTTP Server, HTTP SSE Server, and WebSocket Server) and outbound adapters (HTTP Client, WebSocket Client) support an optional bearer token.
+
+<Warning>
+  Leaving `token` empty disables authentication entirely. Any client that can reach the adapter's port will be able to call OneBot actions or receive events. Always set a strong token on adapters exposed to non-localhost interfaces.
+</Warning>
+
+**For inbound adapters** (HTTP Server, SSE Server, WebSocket Server), clients must include the token in every request:
+
+```http
+Authorization: Bearer my-secret-token
+```
+
+**For outbound adapters** (HTTP Client, WebSocket Client), NapCat adds this header automatically when `token` is non-empty, allowing the remote server to verify the source of incoming requests.

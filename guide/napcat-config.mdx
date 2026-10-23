@@ -1,0 +1,191 @@
+---
+title: "Configure NapCat core settings via napcat.json"
+sidebarTitle: "Core Config"
+description: "Control logging, packet backend, time sync, and bypass options for NapCat through the napcat.json configuration file."
+---
+
+NapCat reads its core runtime settings from a file called `napcat.json` stored in the configuration directory. This file controls how NapCat logs output, which packet-capture backend to use, whether to synchronise time with QQ servers, and a set of low-level bypass toggles. You can edit `napcat.json` directly with any text editor, or update it through the built-in WebUI. Changes take effect on the next restart.
+
+<Note>
+  The configuration directory (`configPath`) is resolved automatically by NapCat at startup. On most installations it is located at `./config/` relative to the NapCat data root. A per-account override file named `napcat_{uin}.json` (e.g. `napcat_123456789.json`) takes precedence over `napcat.json` when an account is logged in.
+</Note>
+
+## Complete example
+
+The following is a fully-populated `napcat.json` showing every available field with its default value.
+
+```json napcat.json
+{
+  "fileLog": false,
+  "consoleLog": true,
+  "fileLogLevel": "debug",
+  "consoleLogLevel": "info",
+  "packetBackend": "auto",
+  "packetServer": "",
+  "o3HookMode": 0,
+  "autoTimeSync": true,
+  "bypass": {
+    "hook": true,
+    "window": true,
+    "module": true,
+    "process": true,
+    "container": true,
+    "js": true
+  }
+}
+```
+
+## Field reference
+
+### Logging
+
+<ParamField body="fileLog" type="boolean" default="false">
+  Write log output to a rotating log file in the `logs/` subdirectory of the configuration path. Useful for persistent audit trails or post-mortem debugging.
+</ParamField>
+
+<ParamField body="consoleLog" type="boolean" default="true">
+  Print log output to the process's standard output (terminal / stdout). Disable this in production environments where log ingestion is handled by a separate system.
+</ParamField>
+
+<ParamField body="fileLogLevel" type="string" default="debug">
+  Minimum severity level that is written to the log file. Accepted values: `"debug"`, `"info"`, `"warn"`, `"error"`. Messages below this level are silently discarded.
+</ParamField>
+
+<ParamField body="consoleLogLevel" type="string" default="info">
+  Minimum severity level that is printed to the console. Accepted values: `"debug"`, `"info"`, `"warn"`, `"error"`. Set to `"debug"` during development to see verbose output.
+</ParamField>
+
+### Packet backend
+
+<ParamField body="packetBackend" type="string" default="auto">
+  Selects the packet interception backend NapCat uses to capture and inject QQ protocol packets.
+
+  | Value | Behaviour |
+  |-------|-----------|
+  | `"auto"` | NapCat picks the most suitable backend for the current platform automatically. |
+  | `"native"` | Forces the native (compiled) backend. Use this when `"auto"` selects the wrong backend. |
+  | `"off"` | Disables packet interception entirely. Some protocol features will be unavailable. |
+</ParamField>
+
+<ParamField body="packetServer" type="string" default="">
+  Address of an external packet server, for example `"ws://127.0.0.1:8085"`. When non-empty NapCat forwards packet operations to this remote server instead of handling them locally. Leave empty unless you are running a split-process deployment.
+</ParamField>
+
+### Hooks and compatibility
+
+<ParamField body="o3HookMode" type="number" default="0">
+  Selects the hooking strategy used for the o3 bypass layer. `0` uses the default mode. Increase this value only when advised by the NapCat team to work around a specific NTQQ build incompatibility.
+</ParamField>
+
+<ParamField body="autoTimeSync" type="boolean" default="true">
+  Automatically synchronise the local clock with the QQ server time before sending messages. Disabling this may cause message-ordering issues or login failures on systems with drifted clocks.
+</ParamField>
+
+### Bypass options
+
+The `bypass` object fine-tunes which interception mechanisms NapCat activates inside the NTQQ process. All fields default to `true`. Disabling a bypass may reduce compatibility with certain QQ features but can help work around security-software conflicts.
+
+<ParamField body="bypass.hook" type="boolean" default="true">
+  Enable the primary function-hook layer used to intercept QQ API calls.
+</ParamField>
+
+<ParamField body="bypass.window" type="boolean" default="true">
+  Enable window-level interception, required for features that interact with the QQ window object.
+</ParamField>
+
+<ParamField body="bypass.module" type="boolean" default="true">
+  Enable module-level patching that replaces certain QQ internal module exports at load time.
+</ParamField>
+
+<ParamField body="bypass.process" type="boolean" default="true">
+  Enable process-level bypass hooks for system-level QQ calls.
+</ParamField>
+
+<ParamField body="bypass.container" type="boolean" default="true">
+  Enable container-level bypass, required for sandboxed renderer environments in newer NTQQ builds.
+</ParamField>
+
+<ParamField body="bypass.js" type="boolean" default="true">
+  Enable JavaScript-layer patching of QQ's bundled scripts.
+</ParamField>
+
+## Common configurations
+
+<Tabs>
+  <Tab title="Development">
+    Verbose logging to both console and file — ideal when debugging a new plugin or diagnosing unexpected behaviour.
+
+    ```json napcat.json
+    {
+      "fileLog": true,
+      "consoleLog": true,
+      "fileLogLevel": "debug",
+      "consoleLogLevel": "debug",
+      "packetBackend": "auto",
+      "packetServer": "",
+      "o3HookMode": 0,
+      "autoTimeSync": true,
+      "bypass": {
+        "hook": true,
+        "window": true,
+        "module": true,
+        "process": true,
+        "container": true,
+        "js": true
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Production">
+    Console output reduced to warnings and errors; file logging kept at `info` for auditing. Packet backend left on `auto`.
+
+    ```json napcat.json
+    {
+      "fileLog": true,
+      "consoleLog": true,
+      "fileLogLevel": "info",
+      "consoleLogLevel": "warn",
+      "packetBackend": "auto",
+      "packetServer": "",
+      "o3HookMode": 0,
+      "autoTimeSync": true,
+      "bypass": {
+        "hook": true,
+        "window": true,
+        "module": true,
+        "process": true,
+        "container": true,
+        "js": true
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Remote packet server">
+    Delegate all packet work to a separate service running on port 8085. All bypass layers remain enabled.
+
+    ```json napcat.json
+    {
+      "fileLog": false,
+      "consoleLog": true,
+      "fileLogLevel": "debug",
+      "consoleLogLevel": "info",
+      "packetBackend": "native",
+      "packetServer": "ws://127.0.0.1:8085",
+      "o3HookMode": 0,
+      "autoTimeSync": true,
+      "bypass": {
+        "hook": true,
+        "window": true,
+        "module": true,
+        "process": true,
+        "container": true,
+        "js": true
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<Tip>
+  If NapCat fails to start after editing `napcat.json`, check whether your JSON syntax is valid. NapCat uses the [json5](https://json5.org/) parser, which tolerates trailing commas and line comments, but the file is still JSON at its core.
+</Tip>

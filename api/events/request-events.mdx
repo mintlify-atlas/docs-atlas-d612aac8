@@ -1,0 +1,246 @@
+---
+title: "Handle friend and group join request events in NapCat"
+sidebarTitle: "Request Events"
+description: "NapCat request events notify your bot of friend add requests and group join or invite requests, each carrying a flag token for approval or rejection."
+---
+
+Request events let your bot react to users who want to add it as a friend or join a group the bot manages. Every request event carries a `flag` — an opaque token you pass back to the corresponding action (`set_friend_add_request` or `set_group_add_request`) to approve or reject the request. All request events share `post_type: 'request'` and are delivered over the same webhook or WebSocket transports as message and notice events.
+
+## Base request shape
+
+All request events extend `OB11BaseRequestEvent`, which itself extends `OneBotEvent`:
+
+<ResponseField name="post_type" type="'request'" required>
+  Always `'request'` for all events on this page.
+</ResponseField>
+
+<ResponseField name="request_type" type="string" required>
+  Either `'friend'` or `'group'`, identifying which type of request was received.
+</ResponseField>
+
+<ResponseField name="time" type="number" required>
+  Unix timestamp (seconds) of when NapCat generated the event.
+</ResponseField>
+
+<ResponseField name="self_id" type="number" required>
+  QQ UIN of the bot account receiving the event.
+</ResponseField>
+
+---
+
+## Friend request
+
+Emitted when a QQ user sends a friend-add request to the bot (`request_type: 'friend'`).
+
+<ResponseField name="request_type" type="'friend'" required />
+
+<ResponseField name="user_id" type="number" required>
+  QQ UIN of the user who sent the friend request.
+</ResponseField>
+
+<ResponseField name="comment" type="string" required>
+  The verification message the user attached to their request. May be an empty string if the user did not include one.
+</ResponseField>
+
+<ResponseField name="flag" type="string" required>
+  Opaque token that uniquely identifies this request. Pass it to `set_friend_add_request` to approve or reject.
+</ResponseField>
+
+### Example payload
+
+```json
+{
+  "post_type": "request",
+  "request_type": "friend",
+  "user_id": 10001,
+  "comment": "Hello, I'd like to add you!",
+  "flag": "abc123def456",
+  "time": 1700000000,
+  "self_id": 99999
+}
+```
+
+### Approving or rejecting a friend request
+
+Use `set_friend_add_request` with the `flag` from the event. Set `approve` to `true` to accept or `false` to decline. Optionally supply a `remark` to set a local alias for the new friend.
+
+<CodeGroup>
+```json Approve
+{
+  "action": "set_friend_add_request",
+  "params": {
+    "flag": "abc123def456",
+    "approve": true,
+    "remark": "Alice"
+  }
+}
+```
+
+```json Reject
+{
+  "action": "set_friend_add_request",
+  "params": {
+    "flag": "abc123def456",
+    "approve": false
+  }
+}
+```
+</CodeGroup>
+
+---
+
+## Group request
+
+Emitted when a user wants to join a group (`sub_type: 'add'`) or when the bot itself is invited into a group (`sub_type: 'invite'`). Both use `request_type: 'group'`.
+
+<ResponseField name="request_type" type="'group'" required />
+
+<ResponseField name="sub_type" type="'add' | 'invite'" required>
+
+  | Value | Meaning |
+  |-------|---------|
+  | `add` | A user submitted a join request for a group the bot manages |
+  | `invite` | Someone invited the bot into a new group |
+</ResponseField>
+
+<ResponseField name="group_id" type="number" required>
+  ID of the group the request concerns.
+</ResponseField>
+
+<ResponseField name="user_id" type="number" required>
+  For `sub_type: 'add'`, the QQ UIN of the user who wants to join. For `sub_type: 'invite'`, the QQ UIN of the user who sent the bot the invite.
+</ResponseField>
+
+<ResponseField name="comment" type="string" required>
+  The verification message attached to the request. Empty string when none was provided.
+</ResponseField>
+
+<ResponseField name="flag" type="string" required>
+  Opaque token for this request. Pass it to `set_group_add_request` to approve or reject.
+</ResponseField>
+
+### Example payloads
+
+<CodeGroup>
+```json Group join request (add)
+{
+  "post_type": "request",
+  "request_type": "group",
+  "sub_type": "add",
+  "group_id": 123456,
+  "user_id": 10001,
+  "comment": "Want to join!",
+  "flag": "xyz789",
+  "time": 1700000000,
+  "self_id": 99999
+}
+```
+
+```json Bot invited to group (invite)
+{
+  "post_type": "request",
+  "request_type": "group",
+  "sub_type": "invite",
+  "group_id": 654321,
+  "user_id": 20001,
+  "comment": "",
+  "flag": "inv456abc",
+  "time": 1700000050,
+  "self_id": 99999
+}
+```
+</CodeGroup>
+
+### Approving or rejecting a group request
+
+Use `set_group_add_request` with the `flag` and the `sub_type` from the event. Set `approve` to `true` to accept or `false` to decline. For rejections, you can optionally provide a `reason` string.
+
+<CodeGroup>
+```json Approve join request
+{
+  "action": "set_group_add_request",
+  "params": {
+    "flag": "xyz789",
+    "sub_type": "add",
+    "approve": true
+  }
+}
+```
+
+```json Reject join request with reason
+{
+  "action": "set_group_add_request",
+  "params": {
+    "flag": "xyz789",
+    "sub_type": "add",
+    "approve": false,
+    "reason": "Membership is currently closed."
+  }
+}
+```
+
+```json Approve bot invite
+{
+  "action": "set_group_add_request",
+  "params": {
+    "flag": "inv456abc",
+    "sub_type": "invite",
+    "approve": true
+  }
+}
+```
+</CodeGroup>
+
+---
+
+## Event delivery
+
+Request events are delivered through the same transport channels as message and notice events.
+
+<Tabs>
+  <Tab title="Webhook (HTTP client)">
+    NapCat POSTs the event JSON to your configured webhook URL. Your server should respond with HTTP `200` to acknowledge receipt. Process the request asynchronously and call the approval action in a follow-up API call — do not block the webhook response.
+
+    ```json
+    POST https://your-bot.example.com/napcat-webhook
+    Content-Type: application/json
+
+    { "post_type": "request", "request_type": "friend", ... }
+    ```
+  </Tab>
+  <Tab title="WebSocket server">
+    NapCat pushes the event as a JSON text frame to every connected client. Parse the frame and route on `post_type: 'request'`, then send a separate action frame (or HTTP POST) to approve or reject.
+
+    ```json
+    { "post_type": "request", "request_type": "group", "sub_type": "add", ... }
+    ```
+  </Tab>
+  <Tab title="WebSocket client">
+    When NapCat is configured as a WebSocket client, it connects outward to your server and delivers events the same way as in server mode — JSON text frames over the established connection.
+  </Tab>
+</Tabs>
+
+---
+
+## Meta events
+
+Alongside request (and other) events, NapCat emits meta events with `post_type: 'meta_event'` on two occasions:
+
+| `meta_event_type` | Trigger | Notable fields |
+|-------------------|---------|----------------|
+| `heartbeat` | Fired periodically at the interval set by `heartInterval` in your adapter config | `status` (bot status snapshot), `interval` (ms between heartbeats) |
+| `lifecycle` | Fired when an adapter connects or disconnects | `sub_type: 'connect'` or `'disconnect'` |
+
+<Tip>
+  Use `lifecycle` events to trigger re-initialization logic (e.g. refetching the group list or friend list) after a reconnect, and use `heartbeat` events to verify your WebSocket connection is still alive.
+</Tip>
+
+---
+
+## Self-sent message events
+
+If you have enabled the `reportSelfMessage` option in your adapter configuration, NapCat also emits `post_type: 'message_sent'` events whenever the bot sends a message. This is unrelated to request events but is worth noting when you process the event stream — ensure your event router handles `message_sent` without treating it as an unexpected `post_type`.
+
+<Note>
+  The `reportSelfMessage` option defaults to `false`. Enable it only if your bot needs to track its own outgoing messages (e.g. for logging or deduplication). Leaving it disabled prevents the bot from accidentally reacting to its own output.
+</Note>

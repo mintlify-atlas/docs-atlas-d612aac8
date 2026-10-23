@@ -1,0 +1,268 @@
+---
+title: "Deploy NapCat with Docker for headless servers"
+sidebarTitle: "Docker"
+description: "Deploy NapCat on headless servers via the official Docker image — covers docker run, Compose, volume mounts, port mapping, and QR code login."
+---
+
+Docker is the easiest way to run NapCat on a Linux server that has no graphical environment. The official image bundles a compatible NTQQ AppImage, Node.js, and the NapCat Shell bundle into a single container. Because the container manages the full process stack, you only need to provide a volume for persistent configuration, expose the WebUI and adapter ports, and then scan the QR code from your browser on first login.
+
+NapCat's CI pipeline (`.github/workflows/release-downstream.yml`) automatically triggers a Docker image build at `NapNeko/NapCat-Docker` whenever a new release is published. The resulting image is pushed to Docker Hub as `mlikiowa/napcat-docker`.
+
+## Prerequisites
+
+- Docker Engine 20.10+ (or Docker Desktop on macOS/Windows)
+- Docker Compose v2 (optional but recommended for persistent deployments)
+- Outbound internet access from the container to reach QQ's servers
+
+## Quick start with `docker run`
+
+The simplest way to try NapCat in Docker is a single `docker run` command. This starts NapCat with the WebUI on port 6099 and the default OneBot 11 adapters on ports 3000 and 3001:
+
+```bash
+docker run -d \
+  --name napcat \
+  -p 6099:6099 \
+  -p 3000:3000 \
+  -p 3001:3001 \
+  -v ./napcat-data:/app/napcat/config \
+  -e NAPCAT_DISABLE_MULTI_PROCESS=1 \
+  mlikiowa/napcat-docker:latest
+```
+
+After a few seconds, open `http://localhost:6099/webui` in your browser. The WebUI will display a QR code for you to scan with the QQ mobile app.
+
+<Note>
+`NAPCAT_DISABLE_MULTI_PROCESS=1` is strongly recommended for Docker. The container runtime (Docker or Kubernetes) already handles process restarts through its own restart policy — the inner parent–worker split adds no benefit and makes log collection more complex inside a container.
+</Note>
+
+## Deployment with Docker Compose
+
+For production use, Docker Compose gives you reproducible configuration, easy upgrades, and named volumes. Create a `docker-compose.yml` in your deployment directory:
+
+```yaml
+services:
+  napcat:
+    image: mlikiowa/napcat-docker:latest
+    container_name: napcat
+    restart: unless-stopped
+
+    environment:
+      # Disable the multi-process supervisor; let Docker manage restarts.
+      NAPCAT_DISABLE_MULTI_PROCESS: "1"
+
+      # Optional: automatic quick login on startup.
+      # NAPCAT_QUICK_ACCOUNT: "123456789"
+      # NAPCAT_QUICK_PASSWORD: "yourpassword"
+
+    ports:
+      # WebUI — open http://localhost:6099/webui to scan QR code and manage NapCat.
+      - "6099:6099"
+      # HTTP adapter (OneBot 11 HTTP server, default port from onebot11.json).
+      - "3000:3000"
+      # WebSocket adapter (OneBot 11 WebSocket server, default port from onebot11.json).
+      - "3001:3001"
+
+    volumes:
+      # Persistent configuration directory (onebot11.json, napcat.json, webui.json, etc.).
+      - napcat-config:/app/napcat/config
+      # Persistent log directory.
+      - napcat-logs:/app/napcat/logs
+
+volumes:
+  napcat-config:
+  napcat-logs:
+```
+
+Start the stack:
+
+```bash
+docker compose up -d
+```
+
+View live logs:
+
+```bash
+docker compose logs -f napcat
+```
+
+Stop and remove containers (data volumes are preserved):
+
+```bash
+docker compose down
+```
+
+## Deployment walkthrough
+
+<Steps>
+
+### Pull the image
+
+Pull the latest stable image from Docker Hub before the first run to ensure you have the most recent version:
+
+```bash
+docker pull mlikiowa/napcat-docker:latest
+```
+
+To pin to a specific NapCat release, use the version tag instead of `latest` — for example `mlikiowa/napcat-docker:v4.10.7`.
+
+### Prepare the data directory
+
+Create a local directory for NapCat's persistent data. If you are using named volumes (as in the Compose example), Docker creates them automatically. For bind-mount deployments, create the directory manually:
+
+```bash
+mkdir -p ./napcat-data/config ./napcat-data/logs
+```
+
+On first boot NapCat will write default configuration files into the config volume if they do not exist yet.
+
+### Start the container
+
+Using Docker Compose:
+
+```bash
+docker compose up -d
+```
+
+Using `docker run` with a bind mount:
+
+```bash
+docker run -d \
+  --name napcat \
+  --restart unless-stopped \
+  -p 6099:6099 \
+  -p 3000:3000 \
+  -p 3001:3001 \
+  -v ./napcat-data/config:/app/napcat/config \
+  -v ./napcat-data/logs:/app/napcat/logs \
+  -e NAPCAT_DISABLE_MULTI_PROCESS=1 \
+  mlikiowa/napcat-docker:latest
+```
+
+### Open the WebUI and scan the QR code
+
+Navigate to `http://<your-server-ip>:6099/webui` in your browser. On the first visit the WebUI will prompt you to set an admin password. After that, it presents the QQ login page with a QR code.
+
+Open QQ on your **phone**, go to **Scan QR Code**, and scan the code shown in the WebUI. The container will detect the successful scan and proceed to initialise the OneBot 11 adapters.
+
+### Verify the adapters are running
+
+Once logged in, the WebUI's dashboard shows the status of all configured network adapters. By default:
+
+- **HTTP server** listens on `0.0.0.0:3000` (configurable in `config/onebot11.json`)
+- **WebSocket server** listens on `0.0.0.0:3001` (configurable in `config/onebot11.json`)
+
+You can test the HTTP adapter with:
+
+```bash
+curl http://localhost:3000/get_login_info
+```
+
+### Configure your bot framework
+
+Point your bot framework (e.g. Koishi, NoneBot, Lagrange, etc.) at the running NapCat container. Example OneBot 11 connection settings:
+
+```json
+{
+  "adapter": "onebot11",
+  "http": {
+    "url": "http://localhost:3000"
+  },
+  "ws": {
+    "url": "ws://localhost:3001"
+  }
+}
+```
+
+</Steps>
+
+## Port reference
+
+| Port | Protocol | Purpose | Configurable |
+|------|----------|---------|--------------|
+| `6099` | HTTP | NapCat WebUI (dashboard, login, config editor) | Yes — `webui.json` → `port` |
+| `3000` | HTTP | OneBot 11 HTTP server (default) | Yes — `onebot11.json` → `network.httpServers[].port` |
+| `3001` | WebSocket | OneBot 11 WebSocket server (default) | Yes — `onebot11.json` → `network.websocketServers[].port` |
+
+If you change the adapter ports in `onebot11.json`, update the `ports` mapping in your `docker-compose.yml` accordingly.
+
+## Volume reference
+
+| Mount path inside container | Contents |
+|---|---|
+| `/app/napcat/config` | `napcat.json`, `onebot11.json`, `webui.json`, login data |
+| `/app/napcat/logs` | Rotating log files written by `LogWrapper` |
+
+<Warning>
+Always mount `/app/napcat/config` as a persistent volume. Without it, NapCat generates a new WebUI token and loses login state every time the container restarts, forcing you to re-scan the QR code.
+</Warning>
+
+## Environment variables
+
+| Variable | Recommended value | Description |
+|---|---|---|
+| `NAPCAT_DISABLE_MULTI_PROCESS` | `1` | **Always set this in Docker.** Disables the parent–worker subprocess split. |
+| `NAPCAT_QUICK_ACCOUNT` | QQ UIN | Attempt automatic quick login on startup using this account. |
+| `NAPCAT_QUICK_PASSWORD` | plaintext password | Password used to derive an MD5 for automatic password login fallback. |
+| `NAPCAT_QUICK_PASSWORD_MD5` | 32-char hex | Pre-computed MD5 used directly for password login fallback. Preferred over `NAPCAT_QUICK_PASSWORD`. |
+| `NAPCAT_DISABLE_BYPASS` | `1` | Disables native bypass patches if they cause incompatibility. |
+| `NAPCAT_PROXY_PORT` | port number | Routes QQ's MSF connections through a SOCKS5 proxy on the given port. |
+| `NAPCAT_PROXY_ADDRESS` | IP address | Proxy host for `NAPCAT_PROXY_PORT` (default `127.0.0.1`). |
+
+## Automatic login on container restart
+
+To avoid re-scanning the QR code every time the container restarts, you can configure automatic quick login. After the first successful scan, the login credentials are cached in the config volume. On subsequent starts, set:
+
+```yaml
+environment:
+  NAPCAT_DISABLE_MULTI_PROCESS: "1"
+  NAPCAT_QUICK_ACCOUNT: "123456789"   # Your QQ UIN
+```
+
+NapCat will try `quickLoginWithUin` on startup. If that fails (e.g. session expired) and you also have `NAPCAT_QUICK_PASSWORD` set, it falls back to password login. If both fail, it falls through to QR code login via the WebUI.
+
+<Tip>
+For fully unattended server deployments, combine `NAPCAT_QUICK_ACCOUNT` with `NAPCAT_QUICK_PASSWORD_MD5`. This allows NapCat to resume after restarts even when the cached session has expired, without storing a plaintext password in your Compose file.
+</Tip>
+
+## Upgrading NapCat
+
+To upgrade to a newer NapCat image, pull the new image and recreate the container. Your configuration and login data are preserved in the named volumes:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Or with `docker run`:
+
+```bash
+docker pull mlikiowa/napcat-docker:latest
+docker stop napcat && docker rm napcat
+# Re-run the original docker run command
+```
+
+## Troubleshooting
+
+**Container exits immediately after starting**
+
+Check the container logs for a startup error:
+
+```bash
+docker logs napcat
+```
+
+If you see `Worker进程在 10 秒内异常退出 3 次` you may have forgotten to set `NAPCAT_DISABLE_MULTI_PROCESS=1`, or the config volume is missing write permission.
+
+**WebUI is inaccessible**
+
+Confirm the port is exposed and not blocked by a firewall:
+
+```bash
+docker ps --filter name=napcat --format "{{.Ports}}"
+```
+
+If you are on a remote server, make sure port 6099 is allowed through the host firewall (e.g. `ufw allow 6099`).
+
+**QR code is not appearing in the WebUI**
+
+NapCat needs an active network connection to QQ's servers before it can generate a QR code. Check for "等待网络连接" (waiting for network connection) messages in the logs, which indicate a connectivity issue between the container and QQ's MSF servers.

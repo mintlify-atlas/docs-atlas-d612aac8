@@ -1,0 +1,392 @@
+---
+title: "Handle notice events for groups and friends in NapCat"
+sidebarTitle: "Notice Events"
+description: "NapCat notice events cover group membership changes, moderation actions, friend updates, emoji reactions, typing indicators, and more."
+---
+
+Notice events are how NapCat tells your bot that something changed — a member joined or left a group, someone was banned, a message was recalled, or a friend sent a poke. All notice events share `post_type: 'notice'` and a `notice_type` string that identifies the specific kind of notice. Many also carry a `sub_type` for a finer distinction, and NapCat adds several extensions beyond the standard OneBot 11 set.
+
+## Base notice shape
+
+Every notice event extends `OB11BaseNoticeEvent`, which itself extends `OneBotEvent`:
+
+<ResponseField name="post_type" type="'notice'" required>
+  Always `'notice'` for all events on this page.
+</ResponseField>
+
+<ResponseField name="notice_type" type="string" required>
+  Identifies the specific notice. See each section below for the valid values.
+</ResponseField>
+
+<ResponseField name="time" type="number" required>
+  Unix timestamp (seconds) of when NapCat generated the event.
+</ResponseField>
+
+<ResponseField name="self_id" type="number" required>
+  QQ UIN of the bot account receiving the event.
+</ResponseField>
+
+---
+
+## Group membership events
+
+These events fire when a user joins or leaves a group.
+
+### `group_increase` — member joined
+
+Emitted when a new member enters a group, either through an admin approval or an invite.
+
+<ResponseField name="notice_type" type="'group_increase'" required />
+
+<ResponseField name="sub_type" type="'approve' | 'invite'" required>
+  `'approve'` — the member's join request was approved. `'invite'` — the member was invited by an existing member.
+</ResponseField>
+
+<ResponseField name="group_id" type="number" required>The group that gained a member.</ResponseField>
+
+<ResponseField name="operator_id" type="number" required>
+  The admin or member who approved/invited. Equals `user_id` when the bot itself joined.
+</ResponseField>
+
+<ResponseField name="user_id" type="number" required>The new member's QQ UIN.</ResponseField>
+
+### `group_decrease` — member left
+
+Emitted when a member leaves or is removed from a group.
+
+<ResponseField name="notice_type" type="'group_decrease'" required />
+
+<ResponseField name="sub_type" type="'leave' | 'kick' | 'kick_me' | 'disband'" required>
+
+  | Value | Meaning |
+  |-------|---------|
+  | `leave` | The member left voluntarily |
+  | `kick` | An admin kicked the member |
+  | `kick_me` | The bot itself was kicked |
+  | `disband` | The group was disbanded |
+</ResponseField>
+
+<ResponseField name="group_id" type="number" required>The affected group.</ResponseField>
+
+<ResponseField name="operator_id" type="number" required>
+  The admin who performed the kick, or equal to `user_id` for voluntary leaves.
+</ResponseField>
+
+<ResponseField name="user_id" type="number" required>The departing member's QQ UIN.</ResponseField>
+
+---
+
+## Group moderation events
+
+### `group_ban` — member muted or unmuted
+
+<ResponseField name="notice_type" type="'group_ban'" required />
+<ResponseField name="sub_type" type="'ban' | 'lift_ban'" required>
+  `'ban'` to mute, `'lift_ban'` to unmute.
+</ResponseField>
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="operator_id" type="number" required>The admin who issued the ban.</ResponseField>
+<ResponseField name="user_id" type="number" required>The affected member. `0` for a whole-group ban.</ResponseField>
+<ResponseField name="duration" type="number" required>
+  Duration of the mute in seconds. `0` means the ban was lifted.
+</ResponseField>
+
+### `group_admin` — admin status changed
+
+<ResponseField name="notice_type" type="'group_admin'" required />
+<ResponseField name="sub_type" type="'set' | 'unset'" required>
+  `'set'` — the user was promoted to admin. `'unset'` — the user was demoted.
+</ResponseField>
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="user_id" type="number" required>The member whose admin status changed.</ResponseField>
+
+### `group_card` — group card (nickname) changed
+
+<ResponseField name="notice_type" type="'group_card'" required />
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="user_id" type="number" required>The member whose card changed.</ResponseField>
+<ResponseField name="card_new" type="string" required>The new group card value.</ResponseField>
+<ResponseField name="card_old" type="string" required>The previous group card value.</ResponseField>
+
+### `notify` / `sub_type: 'group_name'` — group name changed
+
+NapCat emits this as a `notify` sub-event rather than a standalone notice type.
+
+<ResponseField name="notice_type" type="'notify'" required />
+<ResponseField name="sub_type" type="'group_name'" required />
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="user_id" type="number" required>The member who changed the name.</ResponseField>
+<ResponseField name="name_new" type="string" required>The new group name.</ResponseField>
+
+### `notify` / `sub_type: 'title'` — member exclusive title changed
+
+<ResponseField name="notice_type" type="'notify'" required />
+<ResponseField name="sub_type" type="'title'" required />
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="user_id" type="number" required>The member who received the title.</ResponseField>
+<ResponseField name="title" type="string" required>The new exclusive title string.</ResponseField>
+
+---
+
+## Group content events
+
+### `group_upload` — file uploaded to group
+
+<ResponseField name="notice_type" type="'group_upload'" required />
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="user_id" type="number" required>The uploader's QQ UIN.</ResponseField>
+<ResponseField name="file" type="object" required>
+  Metadata about the uploaded file.
+  <Expandable title="file fields">
+    <ResponseField name="id" type="string">Internal file ID.</ResponseField>
+    <ResponseField name="name" type="string">Original file name.</ResponseField>
+    <ResponseField name="size" type="number">File size in bytes.</ResponseField>
+    <ResponseField name="busid" type="number">Business ID used for downloading the file.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+### `group_recall` — group message recalled
+
+<ResponseField name="notice_type" type="'group_recall'" required />
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="user_id" type="number" required>The original message sender.</ResponseField>
+<ResponseField name="operator_id" type="number" required>
+  Who recalled the message. Equals `user_id` when the sender recalled their own message; an admin UIN when an admin recalled it.
+</ResponseField>
+<ResponseField name="message_id" type="number" required>ID of the recalled message.</ResponseField>
+
+### `group_msg_emoji_like` — emoji reaction on a group message <span style={{fontSize:'0.75em',color:'#5468ff',fontWeight:600,verticalAlign:'middle',marginLeft:'6px'}}>NapCat</span>
+
+NapCat extension. Fires when a user adds or removes an emoji reaction on a group message.
+
+<ResponseField name="notice_type" type="'group_msg_emoji_like'" required />
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="user_id" type="number" required>
+  The user who reacted. May be `0` if the reaction was on someone else's message and the sender identity is unavailable.
+</ResponseField>
+<ResponseField name="message_id" type="number" required>The message that was reacted to.</ResponseField>
+<ResponseField name="likes" type="array" required>
+  Array of current emoji reactions on the message.
+  <Expandable title="likes element fields">
+    <ResponseField name="emoji_id" type="string">Emoji ID string.</ResponseField>
+    <ResponseField name="count" type="number">Current total reaction count for this emoji.</ResponseField>
+  </Expandable>
+</ResponseField>
+<ResponseField name="is_add" type="boolean" required>
+  `true` when a reaction was added; `false` when one was removed.
+</ResponseField>
+
+### `essence` — essence message added or removed
+
+<ResponseField name="notice_type" type="'essence'" required />
+<ResponseField name="sub_type" type="'add' | 'delete'" required />
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="sender_id" type="number" required>Original message sender.</ResponseField>
+<ResponseField name="operator_id" type="number" required>Admin who set or removed the essence message.</ResponseField>
+<ResponseField name="message_id" type="number" required>ID of the affected message.</ResponseField>
+
+### `notify` / `sub_type: 'gray_tip'` — group system message <span style={{fontSize:'0.75em',color:'#5468ff',fontWeight:600,verticalAlign:'middle',marginLeft:'6px'}}>NapCat</span>
+
+NapCat forwards raw group system (gray-bar) messages so downstream bots can detect and handle them — including spoofed gray-tip attacks.
+
+<ResponseField name="notice_type" type="'notify'" required />
+<ResponseField name="sub_type" type="'gray_tip'" required />
+<ResponseField name="group_id" type="number" required />
+<ResponseField name="user_id" type="number" required>Real sender QQ UIN (the attacker, if spoofed).</ResponseField>
+<ResponseField name="message_id" type="number" required>Message ID, usable with `delete_msg`.</ResponseField>
+<ResponseField name="busi_id" type="string" required>Business ID of the gray tip.</ResponseField>
+<ResponseField name="content" type="string" required>Raw gray-tip content as a JSON string.</ResponseField>
+
+---
+
+## Friend events
+
+### `friend_add` — new friend added
+
+<ResponseField name="notice_type" type="'friend_add'" required />
+<ResponseField name="user_id" type="number" required>The QQ UIN of the user who became a friend.</ResponseField>
+
+### `friend_recall` — friend recalled a message
+
+<ResponseField name="notice_type" type="'friend_recall'" required />
+<ResponseField name="user_id" type="number" required>The friend who recalled the message.</ResponseField>
+<ResponseField name="message_id" type="number" required>ID of the recalled message.</ResponseField>
+
+### `notify` / `sub_type: 'poke'` — poke (friend or group)
+
+NapCat emits poke events through the `notify` notice type. Both friend pokes and group pokes share the same `sub_type: 'poke'` discriminator; group pokes additionally carry `group_id`.
+
+<ResponseField name="notice_type" type="'notify'" required />
+<ResponseField name="sub_type" type="'poke'" required />
+<ResponseField name="user_id" type="number" required>The user who sent the poke.</ResponseField>
+<ResponseField name="sender_id" type="number" required>Same as `user_id` (the initiator).</ResponseField>
+<ResponseField name="target_id" type="number" required>The user who was poked.</ResponseField>
+<ResponseField name="group_id" type="number">Present on group pokes only.</ResponseField>
+<ResponseField name="raw_info" type="unknown">
+  Raw poke detail data from the NTQQ protocol. Structure varies by QQ client version.
+</ResponseField>
+
+---
+
+## Profile events
+
+### `notify` / `sub_type: 'profile_like'` — profile liked <span style={{fontSize:'0.75em',color:'#5468ff',fontWeight:600,verticalAlign:'middle',marginLeft:'6px'}}>NapCat</span>
+
+Fires when another user likes the bot's QQ profile.
+
+<ResponseField name="notice_type" type="'notify'" required />
+<ResponseField name="sub_type" type="'profile_like'" required />
+<ResponseField name="operator_id" type="number" required>QQ UIN of the user who sent the like.</ResponseField>
+<ResponseField name="operator_nick" type="string" required>Nickname of the user who sent the like.</ResponseField>
+<ResponseField name="times" type="number" required>Number of likes sent in this event batch.</ResponseField>
+<ResponseField name="time" type="number" required>Timestamp of the like action (overrides the base `time`).</ResponseField>
+
+---
+
+## Input status event <span style={{fontSize:'0.75em',color:'#5468ff',fontWeight:600,verticalAlign:'middle',marginLeft:'6px'}}>NapCat</span>
+
+### `notify` / `sub_type: 'input_status'` — typing indicator
+
+Fires when a user starts or stops typing in a private conversation.
+
+<ResponseField name="notice_type" type="'notify'" required />
+<ResponseField name="sub_type" type="'input_status'" required />
+<ResponseField name="user_id" type="number" required>The user whose typing status changed.</ResponseField>
+<ResponseField name="event_type" type="number" required>
+  Internal event type identifier from the NTQQ protocol. `1` typically indicates typing.
+</ResponseField>
+<ResponseField name="status_text" type="string" required>
+  Human-readable status string, e.g. `'对方正在输入...'` (the other party is typing).
+</ResponseField>
+<ResponseField name="group_id" type="number">
+  Present when the typing event occurs in a group context; `0` for private conversations.
+</ResponseField>
+
+---
+
+## Online file events <span style={{fontSize:'0.75em',color:'#5468ff',fontWeight:600,verticalAlign:'middle',marginLeft:'6px'}}>NapCat</span>
+
+NapCat surfaces online (peer-to-peer) file transfer events as notice events. There are two subtypes: one for receiving a transfer initiated by another user, and one for a transfer the bot sent.
+
+### `online_file_receive` — incoming online file
+
+<ResponseField name="notice_type" type="'online_file_receive'" required />
+<ResponseField name="sub_type" type="'cancel'" required>
+  Current sub_type from the NTQQ protocol; reflects the transfer state.
+</ResponseField>
+<ResponseField name="peer_id" type="number" required>QQ UIN of the peer initiating the transfer.</ResponseField>
+
+### `online_file_send` — outgoing online file
+
+<ResponseField name="notice_type" type="'online_file_send'" required />
+<ResponseField name="sub_type" type="'receive' | 'refuse'" required>
+  `'receive'` — the peer accepted the file. `'refuse'` — the peer declined.
+</ResponseField>
+<ResponseField name="peer_id" type="number" required>QQ UIN of the peer.</ResponseField>
+
+---
+
+## Bot offline event <span style={{fontSize:'0.75em',color:'#5468ff',fontWeight:600,verticalAlign:'middle',marginLeft:'6px'}}>NapCat</span>
+
+### `bot_offline`
+
+NapCat emits this event immediately before the bot account disconnects so that downstream adapters or frameworks can take action (e.g. trigger a reconnect or alert).
+
+<ResponseField name="notice_type" type="'bot_offline'" required />
+<ResponseField name="user_id" type="number" required>The bot's own QQ UIN.</ResponseField>
+<ResponseField name="tag" type="string" required>
+  A short machine-readable identifier for the disconnect reason (e.g. `'BotOfflineEvent'`).
+</ResponseField>
+<ResponseField name="message" type="string" required>
+  A human-readable description of why the bot went offline.
+</ResponseField>
+
+---
+
+## Example payloads
+
+<CodeGroup>
+```json group_increase
+{
+  "post_type": "notice",
+  "notice_type": "group_increase",
+  "sub_type": "approve",
+  "group_id": 123456,
+  "operator_id": 20001,
+  "user_id": 10001,
+  "time": 1700000000,
+  "self_id": 99999
+}
+```
+
+```json friend_recall
+{
+  "post_type": "notice",
+  "notice_type": "friend_recall",
+  "user_id": 10001,
+  "message_id": 12345,
+  "time": 1700000100,
+  "self_id": 99999
+}
+```
+
+```json group_ban
+{
+  "post_type": "notice",
+  "notice_type": "group_ban",
+  "sub_type": "ban",
+  "group_id": 123456,
+  "operator_id": 20001,
+  "user_id": 10001,
+  "duration": 600,
+  "time": 1700000200,
+  "self_id": 99999
+}
+```
+
+```json group_msg_emoji_like (NapCat)
+{
+  "post_type": "notice",
+  "notice_type": "group_msg_emoji_like",
+  "group_id": 123456,
+  "user_id": 10001,
+  "message_id": 67890,
+  "likes": [
+    { "emoji_id": "76", "count": 3 }
+  ],
+  "is_add": true,
+  "time": 1700000300,
+  "self_id": 99999
+}
+```
+
+```json notify / poke (group)
+{
+  "post_type": "notice",
+  "notice_type": "notify",
+  "sub_type": "poke",
+  "group_id": 123456,
+  "user_id": 10001,
+  "sender_id": 10001,
+  "target_id": 99999,
+  "time": 1700000400,
+  "self_id": 99999
+}
+```
+
+```json bot_offline (NapCat)
+{
+  "post_type": "notice",
+  "notice_type": "bot_offline",
+  "user_id": 99999,
+  "tag": "BotOfflineEvent",
+  "message": "Connection lost: server closed the session.",
+  "time": 1700000500,
+  "self_id": 99999
+}
+```
+</CodeGroup>
+
+<Note>
+  Events marked **NapCat** (`group_msg_emoji_like`, `input_status`, `online_file_receive`, `online_file_send`, `bot_offline`, `profile_like`, `group_name`, `gray_tip`) are NapCat extensions beyond the standard OneBot 11 spec. Standard OB11 clients may not emit them; ensure your bot handles unknown `notice_type` values gracefully.
+</Note>

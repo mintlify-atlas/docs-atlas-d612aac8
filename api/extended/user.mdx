@@ -1,0 +1,665 @@
+---
+title: "Extended user and profile actions in NapCat"
+sidebarTitle: "User Actions"
+description: "NapCat-specific extensions to the OneBot 11 standard for managing user profiles, online status, friends, and account metadata."
+---
+
+NapCat exposes a set of user-focused API actions that go beyond what the OneBot 11 standard defines. These let your bot change the logged-in account's avatar, signature, and online status, query who liked the bot's profile, retrieve friends grouped by category, check any user's current status, and obtain internal tokens useful for web API calls. None of these actions are part of the core OneBot 11 specification — they are implemented directly in NapCat and may not be supported by other OneBot implementations.
+
+<Note>
+  All actions on this page are **NapCat extensions** and are not defined by the
+  OneBot 11 standard. They will not work with other OneBot 11 implementations
+  such as go-cqhttp or Lagrange. Always check that you are talking to a NapCat
+  endpoint before relying on these.
+</Note>
+
+---
+
+## `set_online_status`
+
+Sets the account's online status. Use the `status` field to pick the primary mode (Online, Away, Busy, etc.) and `ext_status` to select one of the many decorative sub-statuses visible on the profile card. `battery_status` is only meaningful when `ext_status` is `1000` (My Battery).
+
+### Parameters
+
+<ParamField body="status" type="number" required>
+  Primary status code. Common values:
+  `10` = Online, `30` = Away, `40` = Invisible, `50` = Busy, `60` = Q me,
+  `70` = Do Not Disturb.
+</ParamField>
+
+<ParamField body="ext_status" type="number" required>
+  Extended / decorative sub-status code. Set to `0` for a plain primary status.
+  See the status reference table below for popular values.
+</ParamField>
+
+<ParamField body="battery_status" type="number" required>
+  Battery percentage (0–100). Only shown when `ext_status` is `1000`. Pass `0`
+  for all other sub-statuses.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Status reference
+
+<Expandable title="Common ext_status values">
+
+| Status label     | `status` | `ext_status` |
+| :--------------- | :------: | :----------: |
+| Online (plain)   | 10       | 0            |
+| Q me             | 60       | 0            |
+| Away             | 30       | 0            |
+| Busy             | 50       | 0            |
+| Do Not Disturb   | 70       | 0            |
+| Invisible        | 40       | 0            |
+| Listening to music | 10     | 1028         |
+| In love          | 10       | 1051         |
+| Studying         | 10       | 1018         |
+| Gaming (Timi)    | 10       | 1027         |
+| Sleeping         | 10       | 1016         |
+| Traveling        | 10       | 2015         |
+| My Battery       | 10       | 1000         |
+| EMO              | 10       | 1401         |
+| Slacking off     | 10       | 1300         |
+
+</Expandable>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_online_status",
+  "params": {
+    "status": 10,
+    "ext_status": 1028,
+    "battery_status": 0
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_diy_online_status`
+
+Sets a fully custom profile status using a QQ face/emoji as the icon and a freeform text wording. The `face_id` corresponds to the `QSid` field in NapCat's internal `face_config.json`.
+
+### Parameters
+
+<ParamField body="face_id" type="number | string" required>
+  The face/emoji ID to use as the status icon. Refer to `face_config.json`
+  (`QSid` field) for valid IDs.
+</ParamField>
+
+<ParamField body="face_type" type="number | string">
+  Icon type hint. Defaults to `1`. Most custom statuses use type `1`.
+</ParamField>
+
+<ParamField body="wording" type="string">
+  The status text displayed on the profile card. Defaults to a single space
+  (effectively blank).
+</ParamField>
+
+### Response
+
+Returns an error message string if the operation partly failed, or an empty string on full success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_diy_online_status",
+  "params": {
+    "face_id": "123",
+    "face_type": "1",
+    "wording": "Building something cool"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": ""
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_profile_like`
+
+Retrieves information about users who have liked the target account's QQ profile. When `user_id` is omitted or equals the bot's own QQ number, the bot queries its own likes. For other users it fetches their public like data.
+
+### Parameters
+
+<ParamField body="user_id" type="string">
+  The QQ number to query. Omit to query the bot's own profile.
+</ParamField>
+
+<ParamField body="start" type="number | string">
+  Offset into the like list for pagination. Defaults to `0`.
+</ParamField>
+
+<ParamField body="count" type="number | string">
+  Number of entries to return. Defaults to `10`.
+</ParamField>
+
+### Response
+
+<ResponseField name="uid" type="string">
+  The UID of the queried account.
+</ResponseField>
+
+<ResponseField name="time" type="string">
+  Timestamp of the query result.
+</ResponseField>
+
+<ResponseField name="favoriteInfo" type="object">
+  <Expandable title="favoriteInfo fields">
+    <ResponseField name="userInfos" type="array">
+      Array of user objects who sent a favourite-like.
+    </ResponseField>
+    <ResponseField name="total_count" type="number">
+      Total number of favourite likes received.
+    </ResponseField>
+    <ResponseField name="last_time" type="number">
+      Unix timestamp of the most recent favourite like.
+    </ResponseField>
+    <ResponseField name="today_count" type="number">
+      Number of favourite likes received today.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="voteInfo" type="object">
+  <Expandable title="voteInfo fields">
+    <ResponseField name="total_count" type="number">
+      Total vote-likes received.
+    </ResponseField>
+    <ResponseField name="new_count" type="number">
+      New vote-likes since last check.
+    </ResponseField>
+    <ResponseField name="new_nearby_count" type="number">
+      New nearby vote-likes since last check.
+    </ResponseField>
+    <ResponseField name="last_visit_time" type="number">
+      Unix timestamp of the last visit.
+    </ResponseField>
+    <ResponseField name="userInfos" type="array">
+      Array of user objects who sent a vote-like. Each entry has an additional
+      `uin` field resolved by NapCat.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_profile_like",
+  "params": {
+    "start": 0,
+    "count": 10
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "uid": "u_xxxxxxxxxxxx",
+    "time": "1734567890",
+    "favoriteInfo": {
+      "userInfos": [],
+      "total_count": 42,
+      "last_time": 1734567890,
+      "today_count": 5
+    },
+    "voteInfo": {
+      "total_count": 100,
+      "new_count": 2,
+      "new_nearby_count": 0,
+      "last_visit_time": 1734560000,
+      "userInfos": []
+    }
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_qq_avatar`
+
+Replaces the current account's QQ avatar. The `file` parameter accepts the same flexible URI formats used elsewhere in NapCat: a local `file://` path, an `http(s)://` URL (NapCat downloads it automatically), or a `base64://` data URI.
+
+### Parameters
+
+<ParamField body="file" type="string" required>
+  Image source. Accepted formats: `file:///path/to/image.png`,
+  `https://example.com/avatar.jpg`, or `base64://<data>`. The image must be a
+  valid picture format (JPEG, PNG, GIF, etc.). NapCat returns error code
+  `1004022` if the file is not a recognised image.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request (URL)
+{
+  "action": "set_qq_avatar",
+  "params": {
+    "file": "https://example.com/my-avatar.png"
+  }
+}
+```
+
+```json Request (local path)
+{
+  "action": "set_qq_avatar",
+  "params": {
+    "file": "file:///home/user/avatar.jpg"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_self_longnick`
+
+Updates the personal signature (long bio) displayed on the logged-in account's profile page.
+
+### Parameters
+
+<ParamField body="longNick" type="string" required>
+  The new signature text. There is no enforced length limit in the API layer,
+  but QQ's server may truncate very long strings.
+</ParamField>
+
+### Response
+
+Returns the raw API response object from the underlying NTQQ call.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_self_longnick",
+  "params": {
+    "longNick": "Powered by NapCat 🐱"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": 0, "errMsg": "" }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_friends_with_category`
+
+Returns the full friend list grouped into the account's friend categories. This is more informative than the standard `get_friend_list` action because it preserves the user-defined category structure.
+
+### Parameters
+
+No parameters required.
+
+### Response
+
+Returns an array of category objects. Each object conforms to the following shape:
+
+<ResponseField name="categoryId" type="number">
+  Unique numeric ID of the friend category.
+</ResponseField>
+
+<ResponseField name="categoryName" type="string">
+  Display name of the category (e.g. `"我的好友"`, `"同学"`).
+</ResponseField>
+
+<ResponseField name="categoryMbCount" type="number">
+  Number of friends in this category.
+</ResponseField>
+
+<ResponseField name="buddyList" type="array">
+  Array of friend objects in OB11 user format, each containing at minimum
+  `user_id`, `nickname`, and `remark`.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_friends_with_category",
+  "params": {}
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    {
+      "categoryId": 1,
+      "categoryName": "我的好友",
+      "categoryMbCount": 3,
+      "buddyList": [
+        { "user_id": 100000001, "nickname": "Alice", "remark": "" },
+        { "user_id": 100000002, "nickname": "Bob",   "remark": "同事" }
+      ]
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_robot_uin_range`
+
+Retrieves the QQ UIN number ranges that NTQQ uses to classify accounts as bots (robot accounts) rather than human users. Useful for determining whether a given QQ number belongs to a bot.
+
+### Parameters
+
+No parameters required.
+
+### Response
+
+Returns an array of range objects:
+
+<ResponseField name="minUin" type="string">
+  Lower bound of the bot UIN range (inclusive).
+</ResponseField>
+
+<ResponseField name="maxUin" type="string">
+  Upper bound of the bot UIN range (inclusive).
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_robot_uin_range",
+  "params": {}
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    { "minUin": "2854196300", "maxUin": "2854196399" },
+    { "minUin": "3889000000", "maxUin": "3889999999" }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+## `nc_get_user_status`
+
+Queries the current online status of any QQ user. This action requires the NapCat packet backend (`napcat-packet`) to be active, because it calls `GetStrangerStatus` at the protocol layer.
+
+### Parameters
+
+<ParamField body="user_id" type="string" required>
+  The QQ number of the user to query.
+</ParamField>
+
+### Response
+
+<ResponseField name="status" type="number">
+  Primary status code (same scale as `set_online_status`). For example `10` =
+  Online, `40` = Invisible.
+</ResponseField>
+
+<ResponseField name="ext_status" type="number">
+  Extended sub-status code. `0` means no decorative status is active.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "nc_get_user_status",
+  "params": {
+    "user_id": "123456789"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "status": 10,
+    "ext_status": 1028
+  }
+}
+```
+
+</CodeGroup>
+
+<Warning>
+  This action depends on the NapCat packet backend. If the packet backend is
+  not initialised, the call will fail with an error. Enable it in your NapCat
+  configuration before use.
+</Warning>
+
+---
+
+## `get_clientkey`
+
+Retrieves the QQ client key (`clientkey`) for the currently logged-in account. The client key is a session credential used by various QQ web APIs (e.g. Qzone, QQ Music). It changes periodically; always fetch a fresh key immediately before making a web API call.
+
+### Parameters
+
+No parameters required.
+
+### Response
+
+<ResponseField name="clientkey" type="string">
+  The current client key string. May be `undefined` if the underlying fetch
+  failed.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_clientkey",
+  "params": {}
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "clientkey": "0102xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `translate_en2zh`
+
+Translates a list of English words into Chinese. This action wraps NTQQ's built-in translation engine and is provided for go-cqhttp compatibility.
+
+### Parameters
+
+<ParamField body="words" type="string[]" required>
+  An array of English words or short phrases to translate.
+</ParamField>
+
+### Response
+
+<ResponseField name="words" type="string[]">
+  An array of translated Chinese strings in the same order as the input.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "translate_en2zh",
+  "params": {
+    "words": ["hello", "world", "cat"]
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "words": ["你好", "世界", "猫"]
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `fetch_ptt_text`
+
+Transcribes a voice (PTT) message to text using NTQQ's built-in speech-recognition service. Pass the message ID of a message that contains a voice element; NapCat will locate the PTT segment and return the transcribed text.
+
+### Parameters
+
+<ParamField body="message_id" type="number | string" required>
+  The short message ID of a received message that contains a voice element.
+</ParamField>
+
+### Response
+
+<ResponseField name="text" type="string">
+  The transcribed text content of the voice message.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "fetch_ptt_text",
+  "params": {
+    "message_id": 987654321
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "text": "你好，这是一条语音消息"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `_mark_all_as_read`
+
+Marks every unread message across all conversations as read in a single call. This is equivalent to clicking "Mark all as read" in the QQ client.
+
+### Parameters
+
+No parameters required.
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "_mark_all_as_read",
+  "params": {}
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>

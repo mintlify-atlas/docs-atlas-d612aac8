@@ -1,0 +1,186 @@
+---
+title: "Get started with NapCat in 5 minutes"
+sidebarTitle: "Quickstart"
+description: "Download NTQQ and NapCat, launch the bot, log in through the WebUI, configure a network adapter, and send your first API call — all in five minutes."
+---
+
+This guide takes you from zero to a working NapCat instance that accepts OneBot 11 API calls over HTTP. You will download NTQQ, download the NapCat release, start the launcher, scan a QR code to log in, configure one network adapter, and verify everything is working with a `curl` request — the whole process takes under five minutes on a fresh machine.
+
+<Steps>
+
+### Download NTQQ for your platform
+
+NapCat runs on top of the official NTQQ client. Download the latest NTQQ desktop installer for your operating system from the official download page at [im.qq.com](https://im.qq.com/pcqq). Install it but **do not log in yet** — NapCat will handle the login step through its own WebUI.
+
+<Warning>
+NapCat requires the **NTQQ** (NT-architecture) desktop client, version 9.9.x or later. Older QQ clients based on the legacy architecture are not supported.
+</Warning>
+
+### Download the NapCat release
+
+Go to the [NapCatQQ releases page](https://github.com/NapNeko/NapCatQQ/releases) and download the archive for your platform:
+
+- **Windows**: `NapCat.Shell.win32-x64-{version}.zip`
+- **Linux x64**: `NapCat.Shell.linux-x64-{version}.zip`
+- **Linux ARM64**: `NapCat.Shell.linux-arm64-{version}.zip`
+- **macOS ARM64**: `NapCat.Shell.darwin-arm64-{version}.zip`
+
+Extract the archive. You will get a self-contained directory — no Node.js installation is needed because NapCat ships with a bundled runtime.
+
+### Launch NapCat
+
+<Tabs>
+  <Tab title="Windows">
+    The Windows release ships with a launcher batch script and a native boot hook DLL. The recommended way to start NapCat on Windows is to run `launcher.bat` **as Administrator**:
+
+    1. Extract the release archive to any folder (for example `C:\NapCat`).
+    2. Right-click `launcher.bat` and choose **Run as administrator**.
+    3. The launcher reads the QQ installation path from the Windows registry automatically, injects `NapCatWinBootHook.dll` into the NTQQ process via `NapCatWinBootMain.exe`, and starts the NapCat worker.
+
+    ```bat
+    :: The launcher does this automatically — shown here for reference only
+    NapCatWinBootMain.exe "C:\Program Files\Tencent\QQ\QQ.exe" NapCatWinBootHook.dll
+    ```
+
+    <Tip>
+    If you prefer not to use the DLL injection launcher, you can also run `napcat.bat` directly from the `napcat-develop` package in development builds. For production use, `launcher.bat` is the correct entry point.
+    </Tip>
+
+    **Quick login**: pass a QQ number with the `-q` flag to skip the QR code scan if the account has been logged in before:
+
+    ```bat
+    launcher.bat -q 123456789
+    ```
+  </Tab>
+  <Tab title="Linux">
+    1. Extract the archive and `cd` into the directory.
+    2. Mark the startup script executable and run it alongside your NTQQ binary:
+
+    ```bash
+    # Extract
+    unzip NapCat.Shell.linux-x64-*.zip -d /opt/napcat
+    cd /opt/napcat
+
+    # Mark executable
+    chmod +x napcat.sh 2>/dev/null || true
+
+    # Start NapCat (it will locate NTQQ automatically via PATH or the registry-equivalent)
+    ./napcat.sh
+    ```
+
+    On Linux, NapCat Shell launches NTQQ headlessly using the `ELECTRON_RUN_AS_NODE` execution path and loads its JavaScript bundle as a worker. The master process monitors the worker and restarts it automatically if it crashes.
+
+    **Quick login** with a previously authorised account:
+
+    ```bash
+    ./napcat.sh -q 123456789
+    ```
+
+    <Tip>
+    Running NapCat on a headless server? NapCat's WebUI-based QR login works entirely through the browser — you do not need a display for the initial login, though some NTQQ versions may require `Xvfb` on Linux. Check the [Installation guide](/guide/installation) for a complete headless setup.
+    </Tip>
+  </Tab>
+  <Tab title="macOS">
+    1. Extract the archive into `/Applications/NapCat` or any convenient directory.
+    2. Remove the quarantine attribute added by Gatekeeper, then start NapCat:
+
+    ```bash
+    # Remove quarantine flag
+    sudo xattr -rd com.apple.quarantine /Applications/NapCat
+
+    cd /Applications/NapCat
+    chmod +x napcat.sh 2>/dev/null || true
+    ./napcat.sh
+    ```
+
+    On macOS, NapCat looks for NTQQ at `/Applications/QQ.app` by default. The wrapper is loaded from `QQ.app/Contents/Resources/app`.
+
+    **Quick login**:
+
+    ```bash
+    ./napcat.sh -q 123456789
+    ```
+  </Tab>
+</Tabs>
+
+Once the launcher runs successfully you will see log output similar to:
+
+```
+[NapCat] NapCat Shell loading...
+[NapCat] WebUI is running at http://127.0.0.1:6099/webui
+```
+
+### Open the WebUI and log in
+
+Open your browser and navigate to:
+
+```
+http://127.0.0.1:6099/webui
+```
+
+The WebUI will display a QR code. Open QQ on your phone, go to **Settings → Security → QR Code Login**, and scan the code. Once confirmed on your phone, NapCat automatically detects the successful login, initialises the adapter stack, and transitions to the **ready** state.
+
+<Note>
+The WebUI token is embedded in the URL printed to the console on first launch (e.g. `…/webui/?token=abc123…`). If you access the WebUI without the token, you will be asked to enter it manually. You can find the token in NapCat's configuration directory under `config/.env` or directly in the console output.
+</Note>
+
+If you have previously logged in with this QQ account you can skip the QR scan and use quick login instead — the WebUI's login page lists all previously authorised accounts under **Quick Login**.
+
+### Configure a network adapter
+
+Before your bot framework can talk to NapCat you need to enable at least one network adapter. In the WebUI:
+
+1. Click **Network** in the left sidebar.
+2. Click **Add Adapter → HTTP Server**.
+3. Set the **Host** to `127.0.0.1` and the **Port** to `3000`.
+4. Leave **Access Token** blank for local testing (add one in production).
+5. Click **Save**, then **Enable**.
+
+NapCat will bind an HTTP server on `http://127.0.0.1:3000`. Your bot framework should POST OneBot 11 action requests to this address.
+
+<Tip>
+You can run multiple adapters simultaneously — for example an HTTP server on port 3000 for actions and a WebSocket server on port 3001 for real-time events. Add each one separately through the WebUI.
+</Tip>
+
+### Send a test API call
+
+With the HTTP adapter running, verify everything is working by calling `get_login_info`:
+
+```bash
+curl -X POST http://127.0.0.1:3000/get_login_info \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+A successful response looks like this:
+
+```json
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "user_id": 123456789,
+    "nickname": "YourNickname"
+  },
+  "message": "",
+  "wording": "",
+  "echo": null
+}
+```
+
+The `retcode: 0` field confirms NapCat received and processed the request successfully. `user_id` is the QQ number of the currently logged-in account and `nickname` is its display name.
+
+<Note>
+**Response envelope** — every OneBot 11 response from NapCat follows the `OB11Return` schema: `{ status, retcode, data, message, wording, echo }`. A non-zero `retcode` indicates an error; the `message` and `wording` fields carry human-readable details.
+</Note>
+
+</Steps>
+
+## Next steps
+
+You now have a fully functional NapCat instance accepting HTTP requests. From here you can:
+
+- **Add more adapters** — enable a WebSocket server for real-time event delivery, or configure an HTTP webhook so NapCat pushes events to your application.
+- **Connect a bot framework** — NapCat is compatible with any framework that speaks OneBot 11: AstrBot, Nonebot2, Koishi, and others.
+- **Explore the API** — see the [API reference](/api/overview) for the full list of actions including NapCat-specific extensions.
+- **Review installation options** — the [Installation guide](/guide/installation) covers Docker, environment variables, and advanced startup options.

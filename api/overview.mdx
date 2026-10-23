@@ -1,0 +1,353 @@
+---
+title: "NapCat API Reference: OneBot 11 actions and extensions"
+sidebarTitle: "Overview"
+description: "Complete reference for NapCat's OneBot 11 actions and NapCat-specific extensions, callable over HTTP POST or WebSocket across all adapter types."
+---
+
+NapCat implements the [OneBot 11](https://11.onebot.dev/) protocol and extends it with dozens of NapCat-specific actions. Every action — whether a standard OB11 call or a NapCat extension — shares the same request/response shape and can be invoked over **HTTP POST** or **WebSocket**. This page explains how to call actions, how to authenticate, and where to find documentation for each action group.
+
+## Transport methods
+
+NapCat supports five network adapter types (HTTP server, HTTP SSE server, HTTP client, WebSocket server, WebSocket client). Actions are invoked through the HTTP server or WebSocket server adapters.
+
+### HTTP POST
+
+Send a `POST` request to `http://{host}:{port}/{action_name}` with a JSON body containing the action parameters. The default host is `127.0.0.1` and the default port is `3000` (set in your HTTP server adapter config).
+
+```bash
+curl -X POST http://127.0.0.1:3000/send_group_msg \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_token_here" \
+  -d '{
+    "group_id": 123456789,
+    "message": [{ "type": "text", "data": { "text": "Hello from NapCat!" } }]
+  }'
+```
+
+Action names also accept the `_async` and `_rate_limited` suffixes (e.g. `send_group_msg_async`), which resolve to the same handler — these are provided for compatibility with go-cqhttp clients.
+
+### WebSocket
+
+Connect to `ws://{host}:{port}` and send a UTF-8 text frame containing a JSON object. The `action` field names the action, `params` carries the payload, and `echo` is an optional correlation ID that NapCat echoes back unchanged in the response.
+
+```json
+{
+  "action": "send_group_msg",
+  "params": {
+    "group_id": 123456789,
+    "message": [{ "type": "text", "data": { "text": "Hello!" } }]
+  },
+  "echo": "abc123"
+}
+```
+
+<Tip>
+  The WebSocket adapter default port is `3001`. Adjust `host` and `port` in your `websocketServers` config block to match your deployment.
+</Tip>
+
+## Authentication
+
+All adapter types support a shared `token` field in the adapter config. When a token is set, every request must supply it.
+
+| Transport | Method |
+|-----------|--------|
+| HTTP | `Authorization: Bearer <token>` request header |
+| WebSocket (connection) | `?access_token=<token>` query parameter on the WebSocket URL |
+| WebSocket (per-message) | `"token": "<token>"` field inside the JSON frame |
+
+<Warning>
+  Leaving the token empty disables authentication entirely. Always set a strong token on any adapter that is accessible from outside `localhost`.
+</Warning>
+
+## Action categories
+
+NapCat registers over 200 named actions. They are grouped below by function. The `_async` and `_rate_limited` variants of each name map to the same handler and are omitted for brevity.
+
+### Messaging
+
+Core OB11 send/receive operations.
+
+| Action | Description |
+|--------|-------------|
+| `send_private_msg` | Send a private message to a user |
+| `send_group_msg` | Send a message to a group |
+| `send_msg` | Send a message (auto-detects private or group) |
+| `delete_msg` | Retract / delete a sent message |
+| `get_msg` | Retrieve a message by ID |
+| `get_forward_msg` | Fetch a merged-forward message chain |
+| `send_group_forward_msg` | Send a merged-forward message to a group |
+| `send_private_forward_msg` | Send a merged-forward message to a user |
+| `send_forward_msg` | Send a merged-forward message (generic) |
+| `mark_msg_as_read` | Mark a message as read |
+| `mark_private_msg_as_read` | Mark a private conversation as read |
+| `mark_group_msg_as_read` | Mark a group conversation as read |
+| `_mark_all_as_read` | Mark all conversations as read |
+| `get_group_msg_history` | Fetch historical messages from a group |
+| `get_friend_msg_history` | Fetch historical messages from a private chat |
+| `forward_friend_single_msg` | Forward a single message to a friend |
+| `forward_group_single_msg` | Forward a single message to a group |
+| `set_msg_emoji_like` | React to a message with an emoji |
+| `fetch_emoji_like` | Fetch emoji-like details for a message |
+| `get_emoji_likes` | Get a list of emoji reactions on a message |
+| `.handle_quick_operation` | Handle a quick-operation response (go-cqhttp compat) |
+
+### Group management
+
+| Action | Description |
+|--------|-------------|
+| `set_group_kick` | Kick a member from a group |
+| `set_group_kick_members` | Kick multiple members at once |
+| `set_group_ban` | Mute a member in a group |
+| `set_group_whole_ban` | Mute/unmute the entire group |
+| `set_group_admin` | Set or unset a member as admin |
+| `set_group_card` | Set a member's group nickname (card) |
+| `set_group_name` | Rename a group |
+| `set_group_leave` | Leave a group |
+| `set_group_special_title` | Set a member's exclusive title |
+| `set_group_add_request` | Approve or reject a group join request |
+| `set_group_portrait` | Change the group avatar |
+| `get_group_info` | Get basic group information |
+| `get_group_list` | List all joined groups |
+| `get_group_member_info` | Get a specific member's info |
+| `get_group_member_list` | List all members in a group |
+| `get_group_honor_info` | Get honor info (talkative, performer, etc.) |
+| `get_group_system_msg` | Get pending group system messages |
+| `get_group_at_all_remain` | Get remaining @all quota for the group |
+| `get_group_shut_list` | Get the list of muted members |
+| `get_group_ignored_notifies` | Get ignored group notifications |
+| `set_essence_msg` | Pin a message as an essence message |
+| `delete_essence_msg` | Remove an essence message |
+| `get_essence_msg_list` | List essence messages in a group |
+| `_send_group_notice` | Post a group announcement |
+| `_get_group_notice` | Fetch group announcements |
+| `_del_group_notice` | Delete a group announcement |
+| `get_group_ignore_add_request` | Get ignored group add requests |
+| `set_group_sign` | Set group sign |
+| `send_group_sign` | Send a group sign-in |
+| `group_poke` | Poke a group member |
+| `set_group_remark` | Set a local remark for a group |
+| `get_group_info_ex` | Get extended group information |
+| `get_group_share_link` | Get the group's share link |
+| `get_group_detail_info` | Get detailed group info |
+| `set_group_add_option` | Configure group join options |
+| `set_group_robot_add_option` | Configure robot-join permissions |
+| `set_group_search` | Toggle group search visibility |
+| `set_group_member_invite_policy` | Set member invite policy |
+| `set_group_member_permissions` | Set member permissions |
+| `set_group_new_member_history_visibility` | Set chat history visibility for new members |
+
+### User & friends
+
+| Action | Description |
+|--------|-------------|
+| `get_friend_list` | List all friends |
+| `get_friends_with_category` | List friends grouped by category |
+| `get_unidirectional_friend_list` | List one-sided friends |
+| `send_like` | Send a profile like to a user |
+| `friend_poke` | Poke a friend |
+| `send_poke` | Send a poke (auto-detects context) |
+| `set_friend_add_request` | Approve or reject a friend request |
+| `set_friend_remark` | Set a local remark for a friend |
+| `delete_friend` | Delete a friend |
+| `get_stranger_info` | Get profile info for any user |
+| `get_profile_like` | Get profile-like details for a user |
+| `get_recent_contact` | Get recent contacts |
+| `get_online_clients` | List currently online client sessions |
+| `set_qq_profile` | Update the bot's QQ profile |
+| `set_qq_avatar` | Update the bot's avatar |
+| `set_self_longnick` | Set the bot's personal sign |
+| `get_cookies` | Get cookies for a given domain |
+| `get_csrf_token` | Get the CSRF token |
+| `get_credentials` | Get both cookies and CSRF token |
+| `get_doubt_friends_add_request` | Get pending suspicious friend requests |
+| `set_doubt_friends_add_request` | Handle a suspicious friend request |
+| `nc_get_user_status` | Get a user's online status (NapCat) |
+
+### Files
+
+| Action | Description |
+|--------|-------------|
+| `upload_group_file` | Upload a file to a group |
+| `upload_private_file` | Upload a file to a private chat |
+| `delete_group_file` | Delete a file from a group |
+| `create_group_file_folder` | Create a folder in group file space |
+| `delete_group_folder` | Delete a folder in group file space |
+| `get_group_file_system_info` | Get group file system usage info |
+| `get_group_root_files` | List files in the root of group file space |
+| `get_group_files_by_folder` | List files in a specific folder |
+| `get_group_file_url` | Get the download URL for a group file |
+| `move_group_file` | Move a file in group file space |
+| `rename_group_file` | Rename a file in group file space |
+| `trans_group_file` | Transfer a file to another group |
+| `download_file` | Download a file by URL and cache it |
+| `get_file` | Retrieve a cached file by ID |
+| `get_record` | Retrieve a cached voice message |
+| `get_image` | Retrieve a cached image |
+| `get_private_file_url` | Get the download URL for a private file |
+
+### System
+
+| Action | Description |
+|--------|-------------|
+| `get_login_info` | Get the bot's UIN and nickname |
+| `get_status` | Get connection and runtime status |
+| `get_version_info` | Get NapCat and NTQQ version info |
+| `set_restart` | Restart the NapCat process |
+| `bot_exit` | Shut down the NapCat process |
+| `clean_cache` | Clear NapCat's local caches |
+| `can_send_image` | Check whether images can be sent |
+| `can_send_record` | Check whether voice messages can be sent |
+| `check_url_safely` | Check whether a URL is safe (go-cqhttp compat) |
+| `ocr_image` | Run OCR on an image |
+| `.ocr_image` | Alias for `ocr_image` |
+
+### NapCat extensions
+
+NapCat ships a rich set of extensions beyond standard OB11.
+
+#### User / profile extensions
+
+| Action | Description |
+|--------|-------------|
+| `set_online_status` | Set the bot's online status preset |
+| `set_diy_online_status` | Set a custom online status string |
+| `set_input_status` | Set the typing indicator in a chat |
+| `get_robot_uin_range` | Get the UIN ranges reserved for bots |
+| `get_clientkey` | Get the bot's clientkey credential |
+| `translate_en2zh` | Translate English text to Chinese |
+| `create_collection` | Create a QQ collection entry |
+| `get_collection_list` | List QQ collection entries |
+
+#### Group album & media extensions
+
+| Action | Description |
+|--------|-------------|
+| `upload_image_to_qun_album` | Upload a single image to a group album |
+| `upload_images_to_qun_album` | Upload multiple images to a group album |
+| `upload_video_to_qun_album` | Upload a video to a group album |
+| `get_qun_album_list` | List albums in a group |
+| `get_group_album_media_list` | List media in a group album |
+| `set_group_album_media_like` | Like a media item in a group album |
+| `cancel_group_album_media_like` | Remove a like from a group album media |
+| `do_group_album_comment` | Comment on a group album media item |
+| `del_group_album_media` | Delete a media item from a group album |
+
+#### Group todo extensions
+
+| Action | Description |
+|--------|-------------|
+| `set_group_todo` | Create a group todo item |
+| `complete_group_todo` | Mark a group todo as complete |
+| `cancel_group_todo` | Cancel a group todo |
+
+#### AI and media extensions
+
+| Action | Description |
+|--------|-------------|
+| `get_ai_characters` | List available AI voice characters |
+| `get_ai_record` | Generate an AI voice record |
+| `send_group_ai_record` | Send an AI-generated voice message to a group |
+| `fetch_ptt_text` | Transcribe a voice message to text |
+
+#### Flash (闪传) file transfer extensions
+
+| Action | Description |
+|--------|-------------|
+| `create_flash_task` | Create a Flash file transfer task |
+| `send_flash_msg` | Send a Flash file message |
+| `get_flash_file_list` | List files in a Flash transfer session |
+| `get_flash_file_url` | Get the URL for a Flash file |
+| `get_share_link` | Get a share link for a Flash file |
+| `get_fileset_info` | Get metadata for a fileset |
+| `download_fileset` | Download a fileset |
+| `get_fileset_id` | Resolve a fileset ID from a code |
+
+#### Online file transfer extensions
+
+| Action | Description |
+|--------|-------------|
+| `send_online_file` | Initiate an online file transfer |
+| `send_online_folder` | Initiate an online folder transfer |
+| `get_online_file_msg` | Get online file transfer message info |
+| `receive_online_file` | Accept an incoming online file |
+| `refuse_online_file` | Refuse an incoming online file |
+| `cancel_online_file` | Cancel an online file transfer |
+
+#### Packet-level / advanced extensions
+
+| Action | Description |
+|--------|-------------|
+| `nc_get_packet_status` | Check whether raw packet mode is available |
+| `send_packet` | Send a raw protocol packet |
+| `nc_get_rkey` | Get media rkey (NapCat) |
+| `get_rkey` | Get media rkey (go-cqhttp compat alias) |
+| `get_rkey_server` | Get media rkey via rkey server |
+
+#### QQ Zone (QZone) extensions
+
+| Action | Description |
+|--------|-------------|
+| `send_qzone_msg` | Post a message to QQ Zone |
+| `delete_qzone_msg` | Delete a QQ Zone post |
+
+#### Custom face / sticker extensions
+
+| Action | Description |
+|--------|-------------|
+| `fetch_custom_face` | Fetch the custom face list |
+| `fetch_custom_face_detail` | Get details for a specific custom face |
+| `add_custom_face` | Add a custom face |
+| `delete_custom_face` | Delete a custom face |
+| `set_custom_face_desc` | Set the description of a custom face |
+
+#### ARK share / mini-app extensions
+
+| Action | Description |
+|--------|-------------|
+| `send_group_ark_share` | Send an ARK share card to a group |
+| `send_ark_share` | Send an ARK share card (generic) |
+| `get_mini_app_ark` | Get a mini-app ARK card payload |
+| `click_inline_keyboard_button` | Simulate clicking an inline keyboard button |
+
+#### Stream extensions
+
+| Action | Description |
+|--------|-------------|
+| `upload_file_stream` | Upload a file using the streaming transport |
+| `download_file_stream` | Download a file using the streaming transport |
+| `download_file_record_stream` | Download a voice record via streaming |
+| `download_file_image_stream` | Download an image via streaming |
+| `clean_stream_temp_file` | Delete temporary stream files |
+
+## Browse by section
+
+<CardGroup cols={2}>
+  <Card title="Sending Messages" icon="paper-plane" href="/api/messages/send">
+    `send_private_msg`, `send_group_msg`, `send_msg`, forward messages, emoji reactions, and more.
+  </Card>
+  <Card title="Receiving Messages" icon="inbox" href="/api/messages/receive">
+    `get_msg`, `get_forward_msg`, message history, mark-as-read actions.
+  </Card>
+  <Card title="Group Management" icon="users" href="/api/groups">
+    Kick, ban, admin, rename, notice, essence messages, and all group admin operations.
+  </Card>
+  <Card title="Friends & Users" icon="user" href="/api/friends">
+    Friend list, poke, send like, stranger info, profile updates, and request handling.
+  </Card>
+  <Card title="Extended: User" icon="star" href="/api/extended/user">
+    Online status, custom faces, QQ Zone, collections, translations, and bot profile extensions.
+  </Card>
+  <Card title="Extended: Group" icon="layer-group" href="/api/extended/group">
+    Group albums, todos, AI voice, group sign, ARK shares, and advanced group extensions.
+  </Card>
+  <Card title="Extended: Files" icon="folder" href="/api/extended/file">
+    Flash transfer, online file transfer, fileset management, and stream upload/download.
+  </Card>
+  <Card title="Extended: Media" icon="photo-film" href="/api/extended/media">
+    OCR, rkey, packet status, mini-app ARK, AI record generation, and PTT transcription.
+  </Card>
+</CardGroup>
+
+<Note>
+  All action names support the `_async` and `_rate_limited` suffixes as aliases (e.g. `send_group_msg_async`). These route to the same handler and exist for compatibility with go-cqhttp clients.
+</Note>

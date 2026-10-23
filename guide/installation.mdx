@@ -1,0 +1,260 @@
+---
+title: "Install NapCat on Windows, Linux, and macOS"
+sidebarTitle: "Installation"
+description: "Platform-specific installation steps for NapCat on Windows, Linux, macOS, and Docker, including system requirements, directory layout, and environment variables."
+---
+
+NapCat ships as a self-contained release archive. There is no system-wide Node.js installation required — the release bundles a compatible Node.js runtime alongside the compiled NapCat modules. The only external dependency is NTQQ (the official NT-architecture QQ desktop client), which must be installed before you run NapCat.
+
+## System requirements
+
+| Requirement | Details |
+|---|---|
+| **NTQQ** | Version 9.9.x or later, NT architecture. Download from [im.qq.com](https://im.qq.com/pcqq). |
+| **Node.js** | Not required. NapCat bundles its own runtime. |
+| **OS — Windows** | Windows 10 (1903+) or Windows 11, x64. Windows Server requires the **Media Foundation** feature installed (see note below). |
+| **OS — Linux** | Any modern x64 or ARM64 distribution. Glibc 2.17+. A display server is not required for headless operation. |
+| **OS — macOS** | macOS 12 (Monterey) or later, ARM64 (Apple Silicon) or x64. |
+| **Disk** | ~300 MB for the NapCat release, plus whatever NTQQ itself requires. |
+| **Network** | Outbound HTTPS access for QQ servers. Inbound access for the ports you configure on your adapters. |
+
+<Warning>
+**Windows Server — Media Foundation**: NTQQ depends on `mfplat.dll` (Windows Media Foundation). Windows Server editions do not install this component by default. Run the following in an elevated PowerShell prompt before starting NapCat:
+
+```powershell
+Install-WindowsFeature Server-Media-Foundation
+```
+
+Restart the server after installation. Without this component, `wrapper.node` will fail to load with a "module not found" error.
+</Warning>
+
+## Installation steps
+
+<Tabs>
+  <Tab title="Windows">
+    **1. Install NTQQ**
+
+    Download and install the latest NTQQ desktop client from [im.qq.com](https://im.qq.com/pcqq). The default installation path is `C:\Program Files\Tencent\QQ`.
+
+    **2. Download the NapCat release**
+
+    Go to [github.com/NapNeko/NapCatQQ/releases](https://github.com/NapNeko/NapCatQQ/releases) and download the Windows release archive:
+
+    ```
+    NapCat.Shell.win32-x64-{version}.zip
+    ```
+
+    **3. Extract the archive**
+
+    Extract the ZIP to a directory of your choice — for example `C:\NapCat`. The archive does **not** need to be placed inside the QQ installation directory.
+
+    **4. Directory layout after extraction**
+
+    ```
+    C:\NapCat\
+    ├── NapCatWinBootMain.exe       ← Native launcher (injects the hook DLL)
+    ├── NapCatWinBootHook.dll       ← DLL that loads NapCat into NTQQ
+    ├── launcher.bat                ← Recommended start script (auto-detects QQ path)
+    ├── launcher-user.bat           ← Non-admin variant (limited functionality)
+    ├── launcher-win10.bat          ← Windows 10 variant
+    ├── launcher-elevate.ps1        ← PowerShell elevation helper
+    ├── loadNapCat.js               ← JS bootstrap loaded by the hook
+    ├── napcat.mjs                  ← Compiled NapCat shell entry point
+    ├── qqnt.json                   ← NTQQ version/patch manifest
+    └── config\
+        └── .env                    ← Optional environment variable overrides
+    ```
+
+    **5. Run the launcher as Administrator**
+
+    Right-click `launcher.bat` and select **Run as administrator**. The script reads the NTQQ installation path from the Windows registry under `HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\QQ`, launches `NapCatWinBootMain.exe`, and passes the QQ path and hook DLL path automatically.
+
+    ```bat
+    :: Equivalent to what launcher.bat does
+    NapCatWinBootMain.exe "C:\Program Files\Tencent\QQ\QQ.exe" NapCatWinBootHook.dll
+    ```
+
+    After a few seconds you will see the NapCat banner in the console and the WebUI URL:
+
+    ```
+    [NapCat] WebUI is running at http://127.0.0.1:6099/webui
+    ```
+
+    <Tip>
+    **Non-admin launcher**: If you cannot run as Administrator, use `launcher-user.bat` instead. Functionality may be limited depending on your system policy.
+    </Tip>
+  </Tab>
+
+  <Tab title="Linux">
+    **1. Install NTQQ**
+
+    Download the NTQQ Linux package (`.deb` or `.rpm`) from [im.qq.com](https://im.qq.com/pcqq) and install it with your package manager:
+
+    ```bash
+    # Debian / Ubuntu
+    sudo dpkg -i linuxqq_*.deb
+
+    # RHEL / Fedora
+    sudo rpm -i linuxqq_*.rpm
+    ```
+
+    NTQQ installs to `/opt/QQ` by default on most distributions.
+
+    **2. Download and extract the NapCat release**
+
+    ```bash
+    # Download (replace {version} with the latest release tag)
+    wget https://github.com/NapNeko/NapCatQQ/releases/download/{version}/NapCat.Shell.linux-x64-{version}.zip
+
+    # Extract
+    unzip NapCat.Shell.linux-x64-{version}.zip -d /opt/napcat
+    ```
+
+    For ARM64 hosts, use the `linux-arm64` archive instead.
+
+    **3. Directory layout after extraction**
+
+    ```
+    /opt/napcat/
+    ├── napcat.sh          ← Start script
+    ├── napcat.mjs         ← Compiled NapCat shell entry point
+    ├── node               ← Bundled Node.js runtime binary
+    ├── loadNapCat.js      ← JS bootstrap
+    ├── qqnt.json          ← NTQQ version/patch manifest
+    └── config/
+        └── .env           ← Optional environment variable overrides
+    ```
+
+    **4. Mark scripts executable and start NapCat**
+
+    ```bash
+    chmod +x /opt/napcat/napcat.sh
+    cd /opt/napcat
+    ./napcat.sh
+    ```
+
+    NapCat will detect the NTQQ binary at `/opt/QQ/qq` (or `/usr/bin/qq` depending on your distro package). Override this with the `QQ_PATH` environment variable if NTQQ is installed elsewhere.
+
+    **5. Run as a systemd service (optional)**
+
+    ```ini
+    # /etc/systemd/system/napcat.service
+    [Unit]
+    Description=NapCat QQ Bot Framework
+    After=network.target
+
+    [Service]
+    Type=simple
+    User=napcat
+    WorkingDirectory=/opt/napcat
+    ExecStart=/opt/napcat/napcat.sh
+    Restart=on-failure
+    RestartSec=5s
+    Environment=NAPCAT_DISABLE_MULTI_PROCESS=0
+
+    [Install]
+    WantedBy=multi-user.target
+    ```
+
+    ```bash
+    sudo systemctl daemon-reload
+    sudo systemctl enable --now napcat
+    ```
+  </Tab>
+
+  <Tab title="macOS">
+    **1. Install NTQQ**
+
+    Download the macOS NTQQ installer (`.dmg`) from [im.qq.com](https://im.qq.com/pcqq) and drag `QQ.app` into `/Applications`.
+
+    **2. Download and extract the NapCat release**
+
+    ```bash
+    # Apple Silicon (ARM64)
+    curl -L -o napcat.zip \
+      https://github.com/NapNeko/NapCatQQ/releases/download/{version}/NapCat.Shell.darwin-arm64-{version}.zip
+
+    unzip napcat.zip -d ~/napcat
+    ```
+
+    **3. Remove the quarantine attribute**
+
+    macOS Gatekeeper quarantines downloaded binaries. Remove the flag before running:
+
+    ```bash
+    sudo xattr -rd com.apple.quarantine ~/napcat
+    ```
+
+    **4. Directory layout after extraction**
+
+    ```
+    ~/napcat/
+    ├── napcat.sh          ← Start script
+    ├── napcat.mjs         ← Compiled NapCat shell entry point
+    ├── node               ← Bundled Node.js runtime binary
+    ├── loadNapCat.js      ← JS bootstrap
+    ├── qqnt.json          ← NTQQ version/patch manifest
+    └── config/
+        └── .env           ← Optional environment variable overrides
+    ```
+
+    **5. Start NapCat**
+
+    ```bash
+    chmod +x ~/napcat/napcat.sh
+    cd ~/napcat
+    ./napcat.sh
+    ```
+
+    On macOS, NapCat looks for the NTQQ wrapper at `QQ.app/Contents/Resources/app/wrapper.node`. If you installed QQ to a non-standard location, set `NAPCAT_WRAPPER_PATH` (see environment variables below).
+  </Tab>
+</Tabs>
+
+## Docker
+
+NapCat provides official Docker images for containerised deployments. Pull and run:
+
+```bash
+docker pull mlikiowa/napcat-docker:latest
+
+docker run -d \
+  --name napcat \
+  -p 6099:6099 \
+  -p 3000:3000 \
+  -v /your/config:/app/napcat/config \
+  mlikiowa/napcat-docker:latest
+```
+
+<Note>
+Full Docker setup instructions — including `docker-compose` examples, volume mounts, and headless QR login — are covered in the [Docker guide](/guide/docker).
+</Note>
+
+## Environment variables
+
+NapCat reads the following environment variables at startup. You can set them in your shell, in a systemd unit file, or by placing a `KEY=VALUE` file at `config/.env` inside the NapCat directory (the `.env` file is loaded automatically before any other startup logic runs).
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `NAPCAT_WORKER_PROCESS` | `"1"` or unset | unset | Internal flag. Set automatically by the master process to mark the child as a worker. Do not set this manually. |
+| `NAPCAT_DISABLE_MULTI_PROCESS` | `"1"` or unset | unset | Set to `"1"` to run NapCat in single-process mode (no master/worker split). Useful for debugging or for environments where fork is unavailable. Also accepted as `NAPCAT_DISABLE_MULTIPROCESSING`. |
+| `NAPCAT_DISABLE_PIPE` | `"1"` or unset | unset | Set to `"1"` to disable the named-pipe IPC channel between the launcher and the master process. Disable this if your environment does not support named pipes. |
+| `NAPCAT_DISABLE_BYPASS` | `"1"` or unset | unset | Set to `"1"` to disable all NTQQ native bypasses (napi2native hooks). Bypasses are enabled by default in Framework mode; disabling them may reduce functionality but increases compatibility with hardened environments. |
+| `NAPCAT_WRAPPER_PATH` | Path string | auto-detected | Absolute path to `wrapper.node`. Override the auto-detection logic if NTQQ is installed to a non-standard location. |
+| `NAPCAT_WEBUI_JWT_SECRET_KEY` | String | random on start | JWT secret used to sign WebUI authentication tokens. Set this to a stable value if you want tokens to survive process restarts. |
+| `NAPCAT_WEBUI_PREFERRED_PORT` | Port number | `6099` | Preferred port for the WebUI HTTP server. NapCat will try this port first and fall back to a random available port if it is already in use. |
+| `NAPCAT_PRELOAD_NODE_ADDON_PATH` | Path string | unset | Absolute path to a native `.node` addon that should be `dlopen`-ed before NapCat starts. Used for advanced native integrations. |
+| `NAPCAT_SESSION_PROXY` | `"1"` or unset | unset | Set to `"1"` to enable a transparent Proxy around the NTQQ session object for debugging purposes. |
+
+<Tip>
+Environment variables always take precedence over values in `config/.env`. Use the file for persistent defaults and shell variables for one-off overrides.
+</Tip>
+
+## Verifying the installation
+
+After NapCat starts you should see the WebUI address in the console. Open it in a browser:
+
+```
+http://127.0.0.1:6099/webui
+```
+
+If the page loads and shows a QR code or login panel, NapCat is running correctly. Follow the [Quickstart guide](/guide/quickstart) to complete the login and send your first API call.

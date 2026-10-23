@@ -1,0 +1,1042 @@
+---
+title: "File transfer and management actions in NapCat"
+sidebarTitle: "File Actions"
+description: "NapCat's extended API for uploading, downloading, and managing files in group chats, private chats, and via the streaming transport."
+---
+
+NapCat extends the standard file actions from the go-cqhttp compatibility layer with additional capabilities: moving and renaming group files, transferring files between groups, fetching private-file download URLs, and a chunked streaming upload/download transport for large files. The file reference system uses NapCat's internal UUID format — `file_id` values obtained from message events or file-listing calls are opaque UUIDs that encode the peer context, message ID, and element ID together.
+
+<Note>
+  The `file` parameter in upload actions accepts three URI schemes:
+  - **`file:///absolute/path`** — a local path on the machine running NapCat.
+  - **`https://example.com/file.zip`** — NapCat downloads it to its temp directory first.
+  - **`base64://<data>`** — raw base64-encoded content decoded in-process.
+
+  Remote URLs and base64 data are written to a temp file and deleted automatically after the operation completes.
+</Note>
+
+---
+
+## `upload_group_file`
+
+Uploads a file to a group's shared file system. The file appears in the group's file panel and is accessible to all members.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The target group number.
+</ParamField>
+
+<ParamField body="file" type="string" required>
+  File source: a local `file://` path, an `https://` URL, or a `base64://` data URI.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  The file name to display in the group's file list.
+</ParamField>
+
+<ParamField body="folder" type="string">
+  The destination folder ID within the group file system. Omit to upload to the root directory.
+</ParamField>
+
+<ParamField body="folder_id" type="string">
+  Alias for `folder`. Provided for compatibility; if both are specified, `folder` takes priority.
+</ParamField>
+
+### Response
+
+<ResponseField name="file_id" type="string | null">
+  The NapCat UUID of the uploaded file, or `null` if the element could not be found in the send receipt.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "upload_group_file",
+  "params": {
+    "group_id": "123456789",
+    "file": "file:///home/bot/report.pdf",
+    "name": "Monthly Report.pdf"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `upload_private_file`
+
+Sends a file to a private chat (direct message). The recipient receives it as a file message element.
+
+### Parameters
+
+<ParamField body="user_id" type="string" required>
+  The QQ number of the recipient.
+</ParamField>
+
+<ParamField body="file" type="string" required>
+  File source: a local `file://` path, an `https://` URL, or a `base64://` data URI.
+</ParamField>
+
+<ParamField body="name" type="string" required>
+  The file name shown to the recipient.
+</ParamField>
+
+### Response
+
+<ResponseField name="file_id" type="string | null">
+  The NapCat UUID of the uploaded file, or `null` if the element could not be found in the send receipt.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "upload_private_file",
+  "params": {
+    "user_id": "100000001",
+    "file": "https://example.com/document.docx",
+    "name": "Document.docx"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_file_system_info`
+
+Returns storage quota information for a group's file system.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+### Response
+
+<ResponseField name="file_count" type="number">
+  Current number of files stored in the group.
+</ResponseField>
+
+<ResponseField name="limit_count" type="number">
+  Maximum allowed number of files (typically 10,000).
+</ResponseField>
+
+<ResponseField name="used_space" type="number">
+  Bytes currently used by the group file system.
+</ResponseField>
+
+<ResponseField name="total_space" type="number">
+  Total allocated bytes for the group file system (typically 10 GB).
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_file_system_info",
+  "params": {
+    "group_id": "123456789"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "file_count": 42,
+    "limit_count": 10000,
+    "used_space": 104857600,
+    "total_space": 10737418240
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_root_files`
+
+Lists the files and folders at the root level of a group's file system.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="file_count" type="number | string">
+  Maximum number of entries to return. Defaults to `50`.
+</ParamField>
+
+### Response
+
+<ResponseField name="files" type="array">
+  Array of file objects at the root level. Each file object follows the OB11
+  file format with `file_id`, `file_name`, `file_size`, `busid`, and other
+  fields.
+</ResponseField>
+
+<ResponseField name="folders" type="array">
+  Array of folder objects at the root level, with `folder_id`, `folder_name`,
+  `create_time`, and `file_count` fields.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_root_files",
+  "params": {
+    "group_id": "123456789",
+    "file_count": 20
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "files": [
+      { "file_id": "NAPCAT_...", "file_name": "readme.txt", "file_size": 1024, "busid": 102 }
+    ],
+    "folders": [
+      { "folder_id": "/abc123", "folder_name": "Archives", "file_count": 5 }
+    ]
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_files_by_folder`
+
+Lists the files and sub-folders inside a specific folder in a group's file system.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="folder_id" type="string">
+  The folder ID to list. Accepts either `folder_id` or `folder` (alias).
+</ParamField>
+
+<ParamField body="folder" type="string">
+  Alias for `folder_id`.
+</ParamField>
+
+<ParamField body="file_count" type="number | string">
+  Maximum number of entries to return. Defaults to `50`.
+</ParamField>
+
+### Response
+
+Same shape as `get_group_root_files`: `{ files: [], folders: [] }`.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_files_by_folder",
+  "params": {
+    "group_id": "123456789",
+    "folder_id": "/abc123"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "files": [
+      { "file_id": "NAPCAT_...", "file_name": "notes.pdf", "file_size": 204800, "busid": 102 }
+    ],
+    "folders": []
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_file_url`
+
+Returns the temporary CDN download URL for a specific group file. Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="file_id" type="string" required>
+  The NapCat UUID of the file (from `get_group_root_files` or
+  `get_group_files_by_folder`).
+</ParamField>
+
+### Response
+
+<ResponseField name="url" type="string">
+  A time-limited CDN URL to download the file directly.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_file_url",
+  "params": {
+    "group_id": "123456789",
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "url": "https://grouptalk.c2c.qq.com/...?vkey=xxxxxxxx"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `delete_group_file`
+
+Permanently deletes a file from a group's file system.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="file_id" type="string" required>
+  The NapCat UUID of the file to delete.
+</ParamField>
+
+<ParamField body="bus_id" type="number">
+  The `busid` of the file (from the file listing). Can also be passed as
+  `busid` (legacy spelling). If omitted, NapCat uses the value encoded in
+  the UUID.
+</ParamField>
+
+### Response
+
+Returns the raw deletion result from the NTQQ kernel.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "delete_group_file",
+  "params": {
+    "group_id": "123456789",
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX",
+    "bus_id": 102
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "retCode": 0 }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `create_group_file_folder`
+
+Creates a new folder inside a group's file system.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="folder_name" type="string">
+  The name for the new folder. Also accepted as `name` for go-cqhttp compatibility.
+</ParamField>
+
+<ParamField body="name" type="string">
+  Alias for `folder_name`.
+</ParamField>
+
+### Response
+
+<ResponseField name="result" type="any">
+  Raw result from the NTQQ kernel.
+</ResponseField>
+
+<ResponseField name="groupItem" type="any">
+  Group item metadata returned by the kernel after folder creation.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "create_group_file_folder",
+  "params": {
+    "group_id": "123456789",
+    "folder_name": "Release Notes"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "result": {},
+    "groupItem": {}
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `delete_group_folder`
+
+Deletes an existing folder from a group's file system. Files inside the folder are also removed.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="folder_id" type="string">
+  The ID of the folder to delete. Also accepted as `folder`.
+</ParamField>
+
+<ParamField body="folder" type="string">
+  Alias for `folder_id`.
+</ParamField>
+
+### Response
+
+Returns the raw `groupFileCommonResult` from the NTQQ kernel.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "delete_group_folder",
+  "params": {
+    "group_id": "123456789",
+    "folder_id": "/abc123"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "retCode": 0 }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `move_group_file`
+
+Moves a file from one folder to another within the same group's file system. Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="file_id" type="string" required>
+  The NapCat UUID of the file to move.
+</ParamField>
+
+<ParamField body="current_parent_directory" type="string" required>
+  The path of the folder currently containing the file (e.g. `"/"`).
+</ParamField>
+
+<ParamField body="target_parent_directory" type="string" required>
+  The path of the destination folder (e.g. `"/abc123"`).
+</ParamField>
+
+### Response
+
+<ResponseField name="ok" type="boolean">
+  `true` when the move succeeded.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "move_group_file",
+  "params": {
+    "group_id": "123456789",
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX",
+    "current_parent_directory": "/",
+    "target_parent_directory": "/abc123"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "ok": true }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `trans_group_file`
+
+Transfers a group file to another group. Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The source group number that owns the file.
+</ParamField>
+
+<ParamField body="file_id" type="string" required>
+  The NapCat UUID of the file to transfer.
+</ParamField>
+
+### Response
+
+<ResponseField name="ok" type="boolean">
+  `true` when the transfer was accepted.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "trans_group_file",
+  "params": {
+    "group_id": "123456789",
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "ok": true }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `rename_group_file`
+
+Renames a file inside a group's file system. Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="file_id" type="string" required>
+  The NapCat UUID of the file to rename.
+</ParamField>
+
+<ParamField body="current_parent_directory" type="string" required>
+  The directory path that currently contains the file (e.g. `"/"`).
+</ParamField>
+
+<ParamField body="new_name" type="string" required>
+  The new file name (including extension).
+</ParamField>
+
+### Response
+
+<ResponseField name="ok" type="boolean">
+  `true` when the rename succeeded.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "rename_group_file",
+  "params": {
+    "group_id": "123456789",
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX",
+    "current_parent_directory": "/",
+    "new_name": "v2.0-report.pdf"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "ok": true }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `download_file`
+
+Downloads a remote file (URL or base64 data) to NapCat's local temporary directory and returns the on-disk path. This is a go-cqhttp-compatible action.
+
+### Parameters
+
+<ParamField body="url" type="string">
+  The remote URL to download. One of `url` or `base64` must be provided.
+</ParamField>
+
+<ParamField body="base64" type="string">
+  Raw base64-encoded file content to write to disk. One of `url` or `base64`
+  must be provided.
+</ParamField>
+
+<ParamField body="name" type="string">
+  Optional file name for the downloaded file. If omitted, the file is saved
+  under its MD5 hash as the name.
+</ParamField>
+
+<ParamField body="headers" type="string | string[]">
+  Additional HTTP request headers. Accepts either a `\r\n`-separated string or
+  an array of `Key=Value` strings.
+</ParamField>
+
+### Response
+
+<ResponseField name="file" type="string">
+  Absolute local path to the downloaded file on the NapCat host machine.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "download_file",
+  "params": {
+    "url": "https://example.com/data.zip",
+    "name": "data.zip",
+    "headers": ["Authorization=Bearer mytoken"]
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "file": "/tmp/napcat/data.zip"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_file`
+
+Retrieves metadata and the local path (or download URL) for a file identified by a NapCat file UUID or a file name. Works for files received in messages, group file system entries, and named files in the temp directory.
+
+### Parameters
+
+<ParamField body="file" type="string">
+  A NapCat file UUID, local file path, remote URL, or base64 string. One of
+  `file` or `file_id` must be provided.
+</ParamField>
+
+<ParamField body="file_id" type="string">
+  Alias for `file`.
+</ParamField>
+
+### Response
+
+<ResponseField name="file" type="string">
+  Absolute local path to the file on the NapCat machine.
+</ResponseField>
+
+<ResponseField name="url" type="string">
+  Download URL (may be the same as the local path when no CDN URL is
+  available).
+</ResponseField>
+
+<ResponseField name="file_size" type="string">
+  File size in bytes as a string.
+</ResponseField>
+
+<ResponseField name="file_name" type="string">
+  Original file name.
+</ResponseField>
+
+<ResponseField name="base64" type="string">
+  Base64-encoded content. Only present when `enableLocalFile2Url` is enabled
+  in the NapCat configuration.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_file",
+  "params": {
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "file": "/tmp/napcat/document.pdf",
+    "url": "/tmp/napcat/document.pdf",
+    "file_size": "204800",
+    "file_name": "document.pdf"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_private_file_url`
+
+Returns the temporary CDN download URL for a file received in a private (direct) message. This uses the NapCat packet backend to resolve the download URL from the file's internal UUID. Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="file_id" type="string" required>
+  The NapCat UUID of the private file element (from a received file message).
+</ParamField>
+
+### Response
+
+<ResponseField name="url" type="string">
+  A time-limited CDN URL to download the private file.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_private_file_url",
+  "params": {
+    "file_id": "NAPCAT_FILE_UUID_XXXXXXXXXXXXXXXX"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "url": "https://ftn.qq.com/...?vkey=xxxxxxxx"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## Streaming transport
+
+NapCat supports a **chunked streaming transport** for efficiently transferring large files over the WebSocket or HTTP connection without buffering the entire payload at once. These actions use NapCat's stream protocol — each response during an active stream includes a `type: "stream"` field; the final response uses `type: "response"`.
+
+### `upload_file_stream`
+
+Uploads a file to NapCat's temp directory in discrete base64-encoded chunks. Create a stream session, send chunks sequentially (each with its index), then finalize.
+
+#### Parameters
+
+<ParamField body="stream_id" type="string" required>
+  A unique identifier for this upload session (e.g. a UUID you generate). All
+  chunks for the same file must share the same `stream_id`.
+</ParamField>
+
+<ParamField body="chunk_data" type="string">
+  The base64-encoded binary data for this chunk. Required when sending a data
+  chunk.
+</ParamField>
+
+<ParamField body="chunk_index" type="number">
+  Zero-based index of this chunk. Required when sending a data chunk.
+</ParamField>
+
+<ParamField body="total_chunks" type="number">
+  Total number of chunks in the file. Required on the first call for a given
+  `stream_id`.
+</ParamField>
+
+<ParamField body="file_size" type="number">
+  Total file size in bytes. Files ≤ 10 MB are buffered in memory; larger
+  files are streamed through disk. Optional but recommended.
+</ParamField>
+
+<ParamField body="expected_sha256" type="string">
+  Optional SHA-256 hex string. When provided, NapCat verifies the assembled
+  file and rejects the upload if the hash does not match.
+</ParamField>
+
+<ParamField body="filename" type="string">
+  Desired file name for the assembled output. If omitted, a UUID-based name
+  is used.
+</ParamField>
+
+<ParamField body="is_complete" type="boolean">
+  Set to `true` to signal that all chunks have been sent and NapCat should
+  assemble the file.
+</ParamField>
+
+<ParamField body="reset" type="boolean">
+  Set to `true` to abort and clean up the stream session.
+</ParamField>
+
+<ParamField body="file_retention" type="number">
+  Milliseconds to keep the assembled file on disk before automatic deletion.
+  Defaults to 5 minutes (`300000`). Pass `0` to disable auto-deletion.
+</ParamField>
+
+#### Streaming responses
+
+While chunks are being received, each response has `type: "stream"`. The final assembly response has `type: "response"`:
+
+<ResponseField name="type" type="string">
+  `"stream"` while receiving chunks; `"response"` when the file is complete.
+</ResponseField>
+
+<ResponseField name="stream_id" type="string">
+  Echo of the session ID.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  `"file_created"` (stream open), `"chunk_received"` (chunk accepted), or
+  `"file_complete"` (assembly done).
+</ResponseField>
+
+<ResponseField name="received_chunks" type="number">
+  Number of chunks successfully received so far.
+</ResponseField>
+
+<ResponseField name="total_chunks" type="number">
+  Total chunks expected.
+</ResponseField>
+
+<ResponseField name="file_path" type="string">
+  Local path to the assembled file. Present only in the final `file_complete`
+  response.
+</ResponseField>
+
+<ResponseField name="sha256" type="string">
+  SHA-256 of the assembled file. Present only when `expected_sha256` was
+  supplied and verified.
+</ResponseField>
+
+#### Example
+
+<CodeGroup>
+
+```json Send first (and only) chunk
+{
+  "action": "upload_file_stream",
+  "params": {
+    "stream_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "chunk_data": "SGVsbG8gV29ybGQ=",
+    "chunk_index": 0,
+    "total_chunks": 1,
+    "file_size": 11,
+    "filename": "hello.txt",
+    "is_complete": true
+  }
+}
+```
+
+```json Final response
+{
+  "type": "response",
+  "stream_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "status": "file_complete",
+  "received_chunks": 1,
+  "total_chunks": 1,
+  "file_path": "/tmp/napcat/hello.txt",
+  "file_size": 11
+}
+```
+
+</CodeGroup>
+
+---
+
+### `download_file_stream`
+
+Downloads a file from a URL (or retrieves a file by `file_id`) and streams it back to the caller in base64-encoded chunks over the same connection. NapCat first sends a `file_info` packet, then sequential `file_chunk` packets, and finally a `file_complete` packet.
+
+#### Parameters
+
+<ParamField body="file" type="string">
+  URL or local path to download. One of `file` or `file_id` must be provided.
+</ParamField>
+
+<ParamField body="file_id" type="string">
+  NapCat file UUID to resolve and stream. One of `file` or `file_id` must be
+  provided.
+</ParamField>
+
+<ParamField body="chunk_size" type="number">
+  Size of each data chunk in bytes. Defaults to `65536` (64 KB).
+</ParamField>
+
+#### Streaming responses
+
+The download emits a sequence of stream packets:
+
+1. **`file_info`** — sent once with metadata before data begins.
+2. **`file_chunk`** — one per chunk of the file, each containing base64 data.
+3. **`file_complete`** (type `"response"`) — sent after all chunks.
+
+#### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "download_file_stream",
+  "params": {
+    "file": "https://example.com/image.png",
+    "chunk_size": 65536
+  }
+}
+```
+
+```json file_info packet
+{
+  "type": "stream",
+  "data_type": "file_info",
+  "file_name": "image.png",
+  "file_size": 204800,
+  "chunk_size": 65536
+}
+```
+
+```json file_chunk packet (example)
+{
+  "type": "stream",
+  "data_type": "file_chunk",
+  "chunk_index": 0,
+  "data": "<base64-encoded bytes>"
+}
+```
+
+```json file_complete response
+{
+  "type": "response",
+  "data_type": "file_complete",
+  "total_chunks": 4,
+  "total_bytes": 204800,
+  "message": "Download completed"
+}
+```
+
+</CodeGroup>

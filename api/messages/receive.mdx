@@ -1,0 +1,399 @@
+---
+title: "Retrieve messages and history from NapCat"
+sidebarTitle: "Receiving Messages"
+description: "Fetch a single message by ID, page through group and friend message history, unwrap forwarded message chains, and list recent contacts."
+---
+
+NapCat provides four history and retrieval actions that cover the most common read-side patterns: fetching a single message by its short ID, paging through a group or friend chat history, unpacking a forwarded message card, and retrieving the most recently active conversations. All actions return the full `OB11Message` shape — the same structure used in incoming message events.
+
+---
+
+## get\_msg
+
+Retrieve the full details of any message NapCat has seen, identified by the short `message_id` returned when the message was sent or received.
+
+<ParamField body="message_id" type="number | string" required>
+  The NapCat short message ID. This is the value that appears as `message_id` in send responses and incoming message events.
+</ParamField>
+
+**Returns**
+
+<ResponseField name="time" type="number">
+  Unix timestamp (seconds) when the message was sent.
+</ResponseField>
+
+<ResponseField name="message_type" type="string">
+  Either `'group'` or `'private'`.
+</ResponseField>
+
+<ResponseField name="message_id" type="number">
+  Confirmed short ID of the message.
+</ResponseField>
+
+<ResponseField name="real_id" type="number">
+  Alias for `message_id` — identical value, provided for go-cqhttp compatibility.
+</ResponseField>
+
+<ResponseField name="message_seq" type="number">
+  Message sequence number within the conversation.
+</ResponseField>
+
+<ResponseField name="user_id" type="number | string">
+  QQ number of the sender.
+</ResponseField>
+
+<ResponseField name="group_id" type="number | string">
+  Present when `message_type` is `'group'`. The group number the message was posted in.
+</ResponseField>
+
+<ResponseField name="sender" type="object">
+  <Expandable title="Sender fields">
+    <ResponseField name="user_id" type="number">
+      Sender's QQ number.
+    </ResponseField>
+    <ResponseField name="nickname" type="string">
+      Sender's nickname.
+    </ResponseField>
+    <ResponseField name="card" type="string">
+      Sender's group card (alias). Present for group messages.
+    </ResponseField>
+    <ResponseField name="role" type="string">
+      Sender's role in the group: `'owner'`, `'admin'`, or `'member'`. Present for group messages.
+    </ResponseField>
+    <ResponseField name="sex" type="string">
+      `'male'`, `'female'`, or `'unknown'`.
+    </ResponseField>
+    <ResponseField name="age" type="number">
+      Sender's age.
+    </ResponseField>
+    <ResponseField name="level" type="string">
+      Sender's group level string.
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      Sender's group title, if any.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="message" type="array | string">
+  The message content as a segment array (when `messagePostFormat` is `'array'`) or a CQ code string (when `messagePostFormat` is `'string'`). See [Message Types](/api/messages/types) for all segment shapes.
+</ResponseField>
+
+<ResponseField name="raw_message" type="string">
+  The raw CQ code representation of the message, regardless of `messagePostFormat`.
+</ResponseField>
+
+<ResponseField name="font" type="number">
+  Font identifier (always `0` in current NTQQ versions).
+</ResponseField>
+
+<ResponseField name="emoji_likes_list" type="array">
+  <Expandable title="Emoji reaction entries">
+    <ResponseField name="emoji_id" type="string">
+      ID of the emoji reaction.
+    </ResponseField>
+    <ResponseField name="emoji_type" type="string">
+      Internal emoji type string.
+    </ResponseField>
+    <ResponseField name="likes_cnt" type="string">
+      Number of users who applied this reaction.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+**Example response**
+
+```json
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "time": 1710000000,
+    "message_type": "group",
+    "message_id": 123456,
+    "real_id": 123456,
+    "message_seq": 123456,
+    "user_id": 123456789,
+    "group_id": 987654321,
+    "sender": {
+      "user_id": 123456789,
+      "nickname": "Alice",
+      "card": "Alice (dev)",
+      "role": "member"
+    },
+    "message": [
+      { "type": "text", "data": { "text": "Hello, world!" } }
+    ],
+    "raw_message": "Hello, world!",
+    "font": 0,
+    "emoji_likes_list": [
+      { "emoji_id": "76", "emoji_type": "1", "likes_cnt": "3" }
+    ]
+  }
+}
+```
+
+<CodeGroup>
+
+```bash Fetch a message by ID
+curl -X POST http://localhost:3000/get_msg \
+  -H "Content-Type: application/json" \
+  -d '{ "message_id": 123456 }'
+```
+
+</CodeGroup>
+
+---
+
+## get\_group\_msg\_history
+
+Retrieve a page of historical messages from a group chat. When `message_seq` is omitted, the latest messages are returned. Supply `message_seq` to page backward through older history.
+
+<ParamField body="group_id" type="string" required>
+  The group number to fetch history from.
+</ParamField>
+
+<ParamField body="message_seq" type="string">
+  Starting message sequence number. Messages **older than or at** this sequence are returned. If omitted or `0`, the most recent messages are fetched.
+</ParamField>
+
+<ParamField body="count" type="number">
+  How many messages to return. Defaults to `20`.
+</ParamField>
+
+<ParamField body="reverse_order" type="boolean">
+  Return messages in reverse chronological order (newest first). Defaults to `false`. Also accepted as the legacy alias `reverseOrder`.
+</ParamField>
+
+<ParamField body="parse_mult_msg" type="boolean">
+  Expand nested forwarded-message cards into their constituent messages. Defaults to `true`.
+</ParamField>
+
+<ParamField body="disable_get_url" type="boolean">
+  Skip resolving download URLs for media elements. Speeds up the call when you only need message metadata. Defaults to `false`.
+</ParamField>
+
+<ParamField body="quick_reply" type="boolean">
+  Include quick-reply metadata. Defaults to `false`.
+</ParamField>
+
+**Returns**
+
+<ResponseField name="messages" type="OB11Message[]">
+  Chronologically ordered array of full message objects. Each entry has the same shape as the `get_msg` response body documented above.
+</ResponseField>
+
+<CodeGroup>
+
+```bash Fetch the latest 20 messages
+curl -X POST http://localhost:3000/get_group_msg_history \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "987654321",
+    "count": 20
+  }'
+```
+
+```bash Page backward from a known sequence number
+curl -X POST http://localhost:3000/get_group_msg_history \
+  -H "Content-Type: application/json" \
+  -d '{
+    "group_id": "987654321",
+    "message_seq": "5000",
+    "count": 50
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## get\_friend\_msg\_history
+
+Retrieve a page of historical messages from a private (friend) chat. The parameter set mirrors `get_group_msg_history`, with `user_id` in place of `group_id`.
+
+<ParamField body="user_id" type="string" required>
+  The QQ number of the friend.
+</ParamField>
+
+<ParamField body="message_seq" type="string">
+  Starting message sequence. If omitted or `0`, the most recent messages are returned.
+</ParamField>
+
+<ParamField body="count" type="number">
+  Number of messages to return. Defaults to `20`.
+</ParamField>
+
+<ParamField body="reverse_order" type="boolean">
+  Return in reverse chronological order. Defaults to `false`. Also accepted as `reverseOrder`.
+</ParamField>
+
+<ParamField body="parse_mult_msg" type="boolean">
+  Expand forwarded-message cards. Defaults to `true`.
+</ParamField>
+
+<ParamField body="disable_get_url" type="boolean">
+  Skip media URL resolution. Defaults to `false`.
+</ParamField>
+
+<ParamField body="quick_reply" type="boolean">
+  Include quick-reply metadata. Defaults to `false`.
+</ParamField>
+
+**Returns**
+
+<ResponseField name="messages" type="OB11Message[]">
+  Array of full message objects in chronological order.
+</ResponseField>
+
+<CodeGroup>
+
+```bash Fetch the latest 10 messages from a friend
+curl -X POST http://localhost:3000/get_friend_msg_history \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "123456789",
+    "count": 10
+  }'
+```
+
+</CodeGroup>
+
+---
+
+## get\_forward\_msg
+
+Unpack a forwarded message card and return its constituent messages. Accepts either a numeric `message_id` (for a card the bot has seen) or a string `res_id` returned when a forward card was created with `send_group_forward_msg`.
+
+<ParamField body="id" type="string">
+  The forward card's resource ID (`res_id`). This is the string value returned by `send_group_forward_msg` and `send_private_forward_msg`.
+</ParamField>
+
+<ParamField body="message_id" type="string">
+  Alternatively, the short `message_id` of the message containing the forward card.
+</ParamField>
+
+<Note>
+  At least one of `id` or `message_id` must be provided. When both are given, `message_id` takes precedence. Deeply nested inner forward cards may not be resolvable — NapCat handles one level of nesting per call.
+</Note>
+
+**Returns**
+
+<ResponseField name="messages" type="OB11Message[]">
+  The messages contained inside the forwarded card, each as a full `OB11Message` object.
+</ResponseField>
+
+<CodeGroup>
+
+```bash Unpack a forward card by resource ID
+curl -X POST http://localhost:3000/get_forward_msg \
+  -H "Content-Type: application/json" \
+  -d '{ "id": "AbCdEfGhIjKl" }'
+```
+
+```bash Unpack a forward card by message ID
+curl -X POST http://localhost:3000/get_forward_msg \
+  -H "Content-Type: application/json" \
+  -d '{ "message_id": "123456" }'
+```
+
+</CodeGroup>
+
+---
+
+## get\_recent\_contact
+
+List the most recently active conversations — both private chats and group chats — sorted by the time of the last message.
+
+<ParamField body="count" type="number | string">
+  Maximum number of conversations to return. Defaults to `10`.
+</ParamField>
+
+**Returns** an array of recent contact objects:
+
+<ResponseField name="peerUin" type="string">
+  QQ number of the peer (user or group).
+</ResponseField>
+
+<ResponseField name="peerName" type="string">
+  Display name of the peer.
+</ResponseField>
+
+<ResponseField name="remark" type="string">
+  Your personal remark/alias for this peer, if set.
+</ResponseField>
+
+<ResponseField name="msgTime" type="string">
+  Unix timestamp string of the last message in this conversation.
+</ResponseField>
+
+<ResponseField name="chatType" type="number">
+  Internal chat type integer: `1` for private chats, `2` for groups.
+</ResponseField>
+
+<ResponseField name="msgId" type="string">
+  Raw NTQQ message ID of the last message.
+</ResponseField>
+
+<ResponseField name="sendNickName" type="string">
+  Nickname of the sender of the last message.
+</ResponseField>
+
+<ResponseField name="sendMemberName" type="string">
+  Group card of the sender, if the last message was in a group.
+</ResponseField>
+
+<ResponseField name="lastestMsg" type="OB11Message | undefined">
+  The full parsed last message object, or `undefined` if parsing failed.
+</ResponseField>
+
+<CodeGroup>
+
+```bash Get the 5 most recent conversations
+curl -X POST http://localhost:3000/get_recent_contact \
+  -H "Content-Type: application/json" \
+  -d '{ "count": 5 }'
+```
+
+</CodeGroup>
+
+**Example response**
+
+```json
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    {
+      "peerUin": "987654321",
+      "peerName": "Dev Group",
+      "remark": "",
+      "msgTime": "1710001000",
+      "chatType": 2,
+      "msgId": "70000001",
+      "sendNickName": "Alice",
+      "sendMemberName": "Alice (dev)",
+      "lastestMsg": {
+        "message_id": 123456,
+        "message_type": "group",
+        "message": [{ "type": "text", "data": { "text": "Pushed the fix." } }]
+      }
+    },
+    {
+      "peerUin": "111222333",
+      "peerName": "Bob",
+      "remark": "Bob from work",
+      "msgTime": "1710000500",
+      "chatType": 1,
+      "msgId": "70000002",
+      "sendNickName": "Bob",
+      "sendMemberName": "",
+      "lastestMsg": {
+        "message_id": 123450,
+        "message_type": "private",
+        "message": [{ "type": "text", "data": { "text": "See you tomorrow." } }]
+      }
+    }
+  ]
+}
+```

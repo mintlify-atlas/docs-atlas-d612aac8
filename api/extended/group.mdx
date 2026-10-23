@@ -1,0 +1,1101 @@
+---
+title: "Extended group actions and moderation tools in NapCat"
+sidebarTitle: "Group Actions"
+description: "NapCat-specific extensions to the OneBot 11 standard for group management, moderation, sign-ins, AI voice, and QQ Zone interactions."
+---
+
+NapCat provides a rich set of group-management actions that complement the core OneBot 11 group API. These cover personal group remarks, extended group info, batch member removal, sign-in tracking, join-request queues, AI voice generation, and even QQ Zone (Qzone) posts — none of which exist in the base OneBot 11 specification. They are implemented natively inside NapCat and require a NapCat endpoint to function.
+
+<Note>
+  All actions on this page are **NapCat extensions** and are not part of the
+  OneBot 11 standard. They will not work with other OneBot 11 implementations.
+</Note>
+
+---
+
+## `set_group_remark`
+
+Sets a personal remark (alias) for a group that is visible only to the bot account — it does not affect the group's public name.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="remark" type="string" required>
+  The new personal remark text. Pass an empty string to clear the remark.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_remark",
+  "params": {
+    "group_id": "123456789",
+    "remark": "Dev team chat"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_info_ex`
+
+Returns extended group information fields that are not included in the standard `get_group_info` response. The shape of the returned object depends on the NTQQ version and may change between releases.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+### Response
+
+Returns a raw `groupExtInfos` object from the NTQQ kernel. Fields vary but typically include member count details, activity statistics, and feature flags.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_info_ex",
+  "params": {
+    "group_id": "123456789"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "groupCode": "123456789",
+    "topicId": "0",
+    "privilegeFlag": 192,
+    "...": "..."
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_share_link`
+
+Generates a shareable invite link for the group. By default NapCat returns a short `qm.qq.com/q/...` URL. Set `need_short_url` to `false` to receive the full `qun.qq.com/universal-share/share?...` URL instead.
+
+### Parameters
+
+<ParamField body="group_id" type="number | string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="need_short_url" type="boolean">
+  Whether to return a short URL (`qm.qq.com/q/...`). Defaults to `true`.
+</ParamField>
+
+<ParamField body="src_id" type="number | string">
+  Internal share source ID. Defaults to `73`. You rarely need to change this.
+</ParamField>
+
+<ParamField body="additional_param" type="string">
+  Optional additional query parameters to append to the link.
+</ParamField>
+
+### Response
+
+<ResponseField name="url" type="string">
+  The generated share / invite link for the group.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_share_link",
+  "params": {
+    "group_id": "123456789",
+    "need_short_url": true
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "url": "https://qm.qq.com/q/aBcDeFgHiJ"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_sign`
+
+Performs the daily check-in (sign-in) action in a group on behalf of the bot. This is equivalent to tapping the "打卡" button in the QQ group. Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+### Response
+
+Returns `null` (void) on success.
+
+<Warning>
+  This action requires the NapCat packet backend. Ensure the packet backend is
+  configured and running before calling it.
+</Warning>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_sign",
+  "params": {
+    "group_id": "123456789"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_signed_list`
+
+Returns the list of members who have completed today's group check-in, along with their sign-in rank and timestamp.
+
+### Parameters
+
+<ParamField body="group_id" type="string | number" required>
+  The group number.
+</ParamField>
+
+### Response
+
+Returns an array of sign-in record objects:
+
+<ResponseField name="user_id" type="number">
+  The QQ number of the member who signed in.
+</ResponseField>
+
+<ResponseField name="nick" type="string">
+  The member's display nickname at the time of sign-in.
+</ResponseField>
+
+<ResponseField name="time" type="number">
+  Unix timestamp of when the sign-in occurred.
+</ResponseField>
+
+<ResponseField name="rank" type="number">
+  The member's daily sign-in rank (1st, 2nd, 3rd, …).
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_signed_list",
+  "params": {
+    "group_id": "123456789"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    { "user_id": 100000001, "nick": "Alice", "time": 1734567890, "rank": 1 },
+    { "user_id": 100000002, "nick": "Bob",   "time": 1734568000, "rank": 2 }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_kick_members`
+
+Removes multiple group members in a single request. This is more efficient than calling `set_group_kick` repeatedly. You can optionally prevent kicked members from re-joining via an invite.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="user_id" type="string[]" required>
+  Array of QQ numbers (as strings) to kick from the group.
+</ParamField>
+
+<ParamField body="reject_add_request" type="boolean | string">
+  If `true`, also blocks the kicked members from submitting join requests to
+  this group in the future. Defaults to `false`.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_kick_members",
+  "params": {
+    "group_id": "123456789",
+    "user_id": ["100000001", "100000002"],
+    "reject_add_request": false
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_add_option`
+
+Changes who is allowed to join the group and whether a verification question is required.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="add_type" type="number" required>
+  Join policy. Known values:
+  - `0` — Anyone can join freely
+  - `1` — Requires admin approval
+  - `2` — No new members allowed (closed)
+</ParamField>
+
+<ParamField body="group_question" type="string">
+  The verification question shown to applicants when `add_type` is `1`.
+</ParamField>
+
+<ParamField body="group_answer" type="string">
+  The expected answer to the verification question.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_add_option",
+  "params": {
+    "group_id": "123456789",
+    "add_type": 1,
+    "group_question": "What is the project name?",
+    "group_answer": "NapCat"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_robot_add_option`
+
+Controls whether bot accounts are permitted to join the group and whether they require admin approval to do so.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="robot_member_switch" type="number">
+  Master switch: `0` = bots not allowed, `1` = bots allowed. Omit to leave
+  unchanged.
+</ParamField>
+
+<ParamField body="robot_member_examine" type="number">
+  Examination flag: `0` = no approval needed, `1` = admin must approve. Omit
+  to leave unchanged.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_robot_add_option",
+  "params": {
+    "group_id": "123456789",
+    "robot_member_switch": 1,
+    "robot_member_examine": 0
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_search`
+
+Controls whether the group appears in QQ's public group search results.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="no_code_finger_open" type="number">
+  Internal flag for search-without-code visibility. Exact semantics are
+  undocumented by Tencent; omit unless you know the value to use.
+</ParamField>
+
+<ParamField body="no_finger_open" type="number">
+  Internal flag for general search visibility. Omit to leave unchanged.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_search",
+  "params": {
+    "group_id": "123456789",
+    "no_finger_open": 1
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_member_invite_policy`
+
+Controls whether group members may invite friends to join the group and whether such invitations require admin approval.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="policy" type="string" required>
+  Invite policy. One of:
+  - `"disabled"` — members cannot invite anyone
+  - `"require_approval"` — members can invite but admin must approve
+  - `"no_approval"` — members can invite without approval
+  - `"no_approval_under_100"` — approval-free invites only while membership is under 100
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_member_invite_policy",
+  "params": {
+    "group_id": "123456789",
+    "policy": "require_approval"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_member_permissions`
+
+Adjusts fine-grained permissions for all regular members in a group — specifically whether they can upload album photos, start temporary sessions, or create new sub-groups. Only fields you provide are updated; omit a field to leave it unchanged.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="allow_member_upload_album" type="boolean">
+  Allow or deny members from uploading photos to the group album.
+</ParamField>
+
+<ParamField body="allow_member_temporary_session" type="boolean">
+  Allow or deny members from initiating temporary private sessions with each
+  other through the group.
+</ParamField>
+
+<ParamField body="allow_member_create_group" type="boolean">
+  Allow or deny members from creating new group chats from within this group.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_member_permissions",
+  "params": {
+    "group_id": "123456789",
+    "allow_member_upload_album": true,
+    "allow_member_temporary_session": false
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `set_group_new_member_history_visibility`
+
+Controls whether newly joined members can see recent chat history when they first enter the group.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="visible" type="boolean" required>
+  `true` to allow new members to view recent history; `false` to hide it.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "set_group_new_member_history_visibility",
+  "params": {
+    "group_id": "123456789",
+    "visible": true
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_ignore_add_request`
+
+Returns all group join requests that have been **ignored** (not yet approved or rejected) by the admins. Each entry describes who applied, to which group, when, and whether the request has since been handled.
+
+### Parameters
+
+No parameters required.
+
+### Response
+
+Returns an array of pending/ignored join request objects:
+
+<ResponseField name="request_id" type="number">
+  Unique numeric ID for the request, used when accepting or declining via
+  `set_group_add_request`.
+</ResponseField>
+
+<ResponseField name="invitor_uin" type="number">
+  QQ number of the person who sent the join request.
+</ResponseField>
+
+<ResponseField name="invitor_nick" type="string">
+  Nickname of the requester.
+</ResponseField>
+
+<ResponseField name="group_id" type="number">
+  The group the user applied to join.
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  The verification / application message provided by the requester.
+</ResponseField>
+
+<ResponseField name="group_name" type="string">
+  Display name of the target group.
+</ResponseField>
+
+<ResponseField name="checked" type="boolean">
+  Whether the request has already been handled (`true`) or is still pending.
+</ResponseField>
+
+<ResponseField name="actor" type="number">
+  QQ number of the admin who handled the request. `0` if unhandled.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_ignore_add_request",
+  "params": {}
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    {
+      "request_id": 55566677,
+      "invitor_uin": 100000099,
+      "invitor_nick": "Charlie",
+      "group_id": 123456789,
+      "message": "I'm a friend of Alice",
+      "group_name": "Dev Team",
+      "checked": false,
+      "actor": 0,
+      "requester_nick": "Charlie"
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+## `send_qzone_msg`
+
+Posts a new status update (说说) to the bot account's QQ Zone (Qzone). Supports plain text and multiple image attachments. Visibility is controlled by the `ugc_right` field.
+
+### Parameters
+
+<ParamField body="content" type="string" required>
+  The text body of the Qzone post.
+</ParamField>
+
+<ParamField body="images" type="string[]">
+  Optional array of image sources to attach. Each entry may be a
+  `file://` path, an `https://` URL, or a `base64://` data URI. NapCat
+  uploads each image automatically before publishing.
+</ParamField>
+
+<ParamField body="ugc_right" type="number | string">
+  Visibility setting. Allowed values:
+  - `1` — Everyone (default)
+  - `4` — Friends only
+  - `16` — Specific friends (requires `target_uins`)
+  - `64` — Only me
+  - `128` — Exclude specific friends (requires `target_uins`)
+</ParamField>
+
+<ParamField body="target_uins" type="(number | string)[]">
+  Required when `ugc_right` is `16` or `128`. Array of QQ numbers that the
+  visibility rule applies to.
+</ParamField>
+
+### Response
+
+<ResponseField name="tid" type="string">
+  The Qzone transaction ID (`tid`) of the newly created post. Use this value
+  with `delete_qzone_msg` to remove the post later.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request (public post with image)
+{
+  "action": "send_qzone_msg",
+  "params": {
+    "content": "Hello from NapCat! 🐱",
+    "images": ["https://example.com/photo.jpg"],
+    "ugc_right": 1
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "tid": "1234567890abcdef"
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `delete_qzone_msg`
+
+Deletes a previously published QQ Zone post by its `tid`.
+
+### Parameters
+
+<ParamField body="tid" type="string" required>
+  The `tid` of the post to delete, as returned by `send_qzone_msg`.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "delete_qzone_msg",
+  "params": {
+    "tid": "1234567890abcdef"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": null
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_ai_characters`
+
+Fetches the list of available AI voice characters for a group. Characters are grouped by category (e.g. "Male voices", "Female voices"). Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number for which to fetch characters (voice availability may be
+  group-specific).
+</ParamField>
+
+<ParamField body="chat_type" type="number | string">
+  Chat type hint. Defaults to `1` (group chat). Leave as default unless you
+  have a specific reason to change it.
+</ParamField>
+
+### Response
+
+Returns an array of category objects:
+
+<ResponseField name="type" type="string">
+  The category label (e.g. `"温柔女声"`, `"磁性男声"`).
+</ResponseField>
+
+<ResponseField name="characters" type="array">
+  <Expandable title="character object fields">
+    <ResponseField name="character_id" type="string">
+      The unique ID string used to reference this character in
+      `send_group_ai_record` and `get_ai_record`.
+    </ResponseField>
+    <ResponseField name="character_name" type="string">
+      Human-readable display name for the character.
+    </ResponseField>
+    <ResponseField name="preview_url" type="string">
+      URL to a preview audio sample for the character.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_ai_characters",
+  "params": {
+    "group_id": "123456789",
+    "chat_type": 1
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": [
+    {
+      "type": "温柔女声",
+      "characters": [
+        {
+          "character_id": "lucy",
+          "character_name": "Lucy",
+          "preview_url": "https://example.com/preview/lucy.silk"
+        }
+      ]
+    }
+  ]
+}
+```
+
+</CodeGroup>
+
+---
+
+## `send_group_ai_record`
+
+Sends an AI-generated voice message to a group chat. NapCat synthesises the audio from the given text using the specified character's voice engine. Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The target group number.
+</ParamField>
+
+<ParamField body="character" type="string" required>
+  The `character_id` of the AI voice to use, as returned by
+  `get_ai_characters`.
+</ParamField>
+
+<ParamField body="text" type="string" required>
+  The text to synthesise into speech.
+</ParamField>
+
+### Response
+
+<ResponseField name="message_id" type="number">
+  The message ID of the sent voice message. Note: due to a limitation in the
+  underlying packet operation, this is currently always `0`.
+</ResponseField>
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "send_group_ai_record",
+  "params": {
+    "group_id": "123456789",
+    "character": "lucy",
+    "text": "大家好，我是 NapCat 语音助手！"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "message_id": 0
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_ai_record`
+
+Synthesises an AI voice clip from text and returns the download URL of the resulting audio file without sending it as a message. Useful when you want to obtain the audio for processing before (or instead of) sending it. Requires the NapCat packet backend.
+
+### Parameters
+
+<ParamField body="character" type="string" required>
+  The `character_id` of the AI voice to use.
+</ParamField>
+
+<ParamField body="group_id" type="string" required>
+  A group number in which the bot has access (required by the underlying API
+  call even when you do not intend to send to the group).
+</ParamField>
+
+<ParamField body="text" type="string" required>
+  The text to synthesise.
+</ParamField>
+
+### Response
+
+Returns a string URL pointing to the generated SILK audio file.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_ai_record",
+  "params": {
+    "character": "lucy",
+    "group_id": "123456789",
+    "text": "Hello, world!"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": "https://grouptalk.c2c.qq.com/...xxxxx.silk"
+}
+```
+
+</CodeGroup>
+
+---
+
+## `get_group_album_media_list`
+
+Lists media items (photos) stored in a specific group album. Supports pagination via `attach_info`.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="album_id" type="string" required>
+  The album ID, obtainable from `get_qun_album_list`.
+</ParamField>
+
+<ParamField body="attach_info" type="string">
+  Pagination cursor from a previous response. Pass an empty string or omit for
+  the first page.
+</ParamField>
+
+### Response
+
+Returns a raw response object from the NapCat web API. The `media_list` array within it contains individual media items, each with at minimum a `media_id` (the `lloc` value) and a CDN URL.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "get_group_album_media_list",
+  "params": {
+    "group_id": "123456789",
+    "album_id": "album_abc123"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": {
+    "media_list": [
+      { "lloc": "xxxxxxxx", "url": "https://pic.example.com/photo1.jpg" }
+    ],
+    "attach_info": "",
+    "has_more": false
+  }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `del_group_album_media`
+
+Deletes a single media item from a group album using its `lloc` identifier (the media ID returned by `get_group_album_media_list`).
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+<ParamField body="album_id" type="string" required>
+  The album ID containing the media item.
+</ParamField>
+
+<ParamField body="lloc" type="string" required>
+  The unique media identifier (`lloc`) of the item to delete.
+</ParamField>
+
+### Response
+
+Returns the raw deletion result object from the web API.
+
+### Example
+
+<CodeGroup>
+
+```json Request
+{
+  "action": "del_group_album_media",
+  "params": {
+    "group_id": "123456789",
+    "album_id": "album_abc123",
+    "lloc": "xxxxxxxxxxxxxxxx"
+  }
+}
+```
+
+```json Response
+{
+  "status": "ok",
+  "retcode": 0,
+  "data": { "result": {} }
+}
+```
+
+</CodeGroup>
+
+---
+
+## `send_group_sign`
+
+An alias for `set_group_sign`. Sends the daily group check-in action on behalf of the bot. Both action names are registered and behave identically.
+
+### Parameters
+
+<ParamField body="group_id" type="string" required>
+  The group number.
+</ParamField>
+
+### Response
+
+Returns `null` on success.
+
+<Warning>
+  This action requires the NapCat packet backend.
+</Warning>
